@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 import pandas as pd
 
 
@@ -23,10 +22,25 @@ class Merger:
         how: str = "inner",
         return_reasoning: bool = False,
     ) -> pd.DataFrame:
+        if how not in ("inner", "left", "right", "outer"):
+            raise ValueError(f"how must be inner/left/right/outer, got '{how}'")
+        if right_col in df1.columns and right_col != left_col:
+            raise ValueError(
+                f"right_col '{right_col}' already exists in df1; rename before merging"
+            )
+
         if not matches:
+            empty = pd.DataFrame(columns=list(df1.columns) + [
+                c for c in df2.columns if c != right_col or right_col == left_col
+            ])
             if how == "inner":
-                return pd.DataFrame(columns=list(df1.columns) + list(df2.columns))
-            return df1.copy() if how == "left" else df2.copy()
+                return empty
+            if how == "left":
+                return df1.copy()
+            if how == "right":
+                return df2.copy()
+            # outer: return both frames with NaN fills
+            return pd.merge(df1, df2, left_on=left_col, right_on=right_col, how="outer")
 
         match_df = pd.DataFrame({
             left_col: [m.left_val for m in matches],
