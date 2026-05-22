@@ -39,7 +39,7 @@ def fuzzy_join(
         threshold=threshold,
         embed_model=embed_model,
         embed_fn=embed_fn,
-        batch_size=batch_size,
+        batch_size=batch_size,  # reserved for future LLM scoring batching; not used for embedding
         embed_threshold=embed_threshold,
         max_llm_calls=max_llm_calls,
     )
@@ -51,29 +51,36 @@ def fuzzy_join(
     left_vals = df1[left_col].astype(str).tolist()
     right_vals = df2[right_col].astype(str).tolist()
 
-    candidates_per_row = retriever.retrieve(left_vals, right_vals, top_k=cfg.top_k)
+    # Use retrieve_with_scores for embed_threshold path
+    candidates_per_row = retriever.retrieve_with_scores(left_vals, right_vals, top_k=cfg.top_k)
 
     matches: list[MatchResult] = []
     llm_call_count = 0
 
-    for left_val, candidates in zip(left_vals, candidates_per_row):
-        if not candidates:
+    for left_val, candidates_with_scores in zip(left_vals, candidates_per_row):
+        if not candidates_with_scores:
             continue
 
-        # embed_threshold short-circuit: skip LLM for obvious cases
+        # embed_threshold short-circuit
         if cfg.embed_threshold is not None:
-            top_embed_score = _top_embed_score(retriever, left_val, candidates)
-            if top_embed_score >= cfg.embed_threshold:
+            best_candidate, best_score = candidates_with_scores[0]  # already sorted by score desc
+            if best_score >= cfg.embed_threshold:
                 matches.append(MatchResult(
                     left_val=left_val,
-                    right_val=candidates[0],
-                    score=top_embed_score,
+                    right_val=best_candidate,
+                    score=best_score,
                     reasoning="embed_threshold match",
                     embed_rank=0,
                 ))
                 continue
-            if top_embed_score < (1.0 - cfg.embed_threshold):
-                continue  # obvious non-match, skip LLM
+            if best_score < (1.0 - cfg.embed_threshold):
+                warnings.warn(
+                    f"Row '{left_val}' skipped: top embed score {best_score:.3f} "
+                    f"below non-match threshold {1.0 - cfg.embed_threshold:.3f}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
 
         # max_llm_calls cap
         if cfg.max_llm_calls is not None and llm_call_count >= cfg.max_llm_calls:
@@ -85,6 +92,7 @@ def fuzzy_join(
             )
             break
 
+        candidates = [c for c, _ in candidates_with_scores]
         result = scorer.score(left_val, candidates, cfg.context_str, threshold=cfg.threshold)
         llm_call_count += 1
         if result is not None:
@@ -107,12 +115,3 @@ def _normalise_cols(df1, df2, left_on, right_on):
     return left_on, right_on, df1, df2
 
 
-def _top_embed_score(retriever: EmbeddingRetriever, query: str, candidates: list[str]) -> float:
-    import faiss
-    import numpy as np
-    q_vec = retriever._embed([query])
-    c_vecs = retriever._embed(candidates)
-    faiss.normalize_L2(q_vec)
-    faiss.normalize_L2(c_vecs)
-    scores = (c_vecs @ q_vec.T).flatten()
-    return float(scores.max())

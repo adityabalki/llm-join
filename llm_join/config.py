@@ -14,6 +14,8 @@ class ColumnConfig:
     threshold: float = 0.7
     embed_model: str = "all-MiniLM-L6-v2"
     embed_fn: Optional[Callable[[list[str]], np.ndarray]] = None
+    # batch_size: reserved for future LLM scoring batching (pairs per prompt).
+    # Not used for embedding — sentence-transformers handles its own batching internally.
     batch_size: int = 32
     embed_threshold: Optional[float] = None
     max_llm_calls: Optional[int] = None

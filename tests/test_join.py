@@ -93,3 +93,18 @@ def test_max_llm_calls_warns(recwarn):
         max_llm_calls=1,  # only 1 allowed, 2 rows -> warn
     )
     assert any("max_llm_calls" in str(w.message) for w in recwarn)
+
+
+def test_multi_col_left_on():
+    df1 = pd.DataFrame({"drug": ["aspirin"], "form": ["tablet"], "dose": [100]})
+    df2 = pd.DataFrame({"brand": ["Bayer Aspirin Tablet"], "price": [5.0]})
+    result = fuzzy_join(
+        df1, df2,
+        left_on=["drug", "form"],
+        right_on="brand",
+        llm=mock_llm,
+        embed_fn=mock_embed,
+        top_k=1,
+        how="inner",
+    )
+    assert isinstance(result, pd.DataFrame)
