@@ -1,5 +1,6 @@
 import json
 import pytest
+import pytest_asyncio
 from llm_join.scorer import LLMScorer
 from llm_join.merger import MatchResult
 
@@ -61,3 +62,26 @@ def test_embed_rank_set_correctly():
     scorer = LLMScorer(make_llm(resp))
     result = scorer.score("aspirin", ["ibuprofen", "Bayer Aspirin"], "pharma")
     assert result.embed_rank == 1  # index of best match in candidates list
+
+def test_async_llm_raises_on_sync_score():
+    async def async_llm(prompt: str) -> str:
+        return "[]"
+    scorer = LLMScorer(async_llm)
+    with pytest.raises(TypeError, match="score_async"):
+        scorer.score("aspirin", ["Bayer Aspirin"], "pharma")
+
+@pytest.mark.asyncio
+async def test_score_async_with_async_llm():
+    resp = valid_response([{"score": 0.9, "reasoning": "match"}])
+    async def async_llm(prompt: str) -> str:
+        return resp
+    scorer = LLMScorer(async_llm)
+    result = await scorer.score_async("aspirin", ["Bayer Aspirin"], "pharma")
+    assert result is not None
+    assert result.score == 0.9
+
+def test_non_list_json_returns_none_with_warning(recwarn):
+    scorer = LLMScorer(make_llm('{"error": "model overloaded"}'))
+    result = scorer.score("aspirin", ["Bayer Aspirin"], "pharma")
+    assert result is None
+    assert len(recwarn) > 0

@@ -20,11 +20,12 @@ class LLMScorer:
         context_str: str,
         threshold: float = 0.7,
     ) -> Optional[MatchResult]:
-        prompt = build_prompt(left_val, candidates, context_str)
         if self._is_async:
-            raw = asyncio.get_event_loop().run_until_complete(self._llm(prompt))
-        else:
-            raw = self._llm(prompt)
+            raise TypeError(
+                "LLM is async; call score_async() instead, or pass a sync callable."
+            )
+        prompt = build_prompt(left_val, candidates, context_str)
+        raw = self._llm(prompt)
         return self._parse(left_val, candidates, raw, threshold)
 
     async def score_async(
@@ -60,7 +61,7 @@ class LLMScorer:
             parsed = json.loads(cleaned)
         except (json.JSONDecodeError, ValueError):
             # retry: find JSON array anywhere in response
-            match = re.search(r'\[.*\]', raw, re.DOTALL)
+            match = re.search(r'\[.*?\]', raw, re.DOTALL)
             if match:
                 try:
                     parsed = json.loads(match.group())
@@ -70,6 +71,10 @@ class LLMScorer:
             else:
                 warnings.warn(f"LLM returned malformed JSON for '{left_val}': {raw!r}")
                 return None
+
+        if not isinstance(parsed, list):
+            warnings.warn(f"LLM returned non-array JSON for '{left_val}': {raw!r}")
+            return None
 
         best_score = -1.0
         best_idx = -1
