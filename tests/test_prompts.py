@@ -24,7 +24,11 @@ def test_prompt_indexes_candidates():
     assert "2." in prompt
 
 def test_prompt_empty_context():
-    # must not crash with empty context
     prompt = build_prompt("x", ["y"], "")
     assert "x" in prompt
     assert "y" in prompt
+    assert "Context:" not in prompt
+
+def test_prompt_whitespace_context_omitted():
+    prompt = build_prompt("x", ["y"], "   ")
+    assert "Context:" not in prompt
