@@ -15,13 +15,12 @@ def fuzzy_join(
     left_on: Union[str, list[str]],
     right_on: Union[str, list[str]],
     llm: Callable,
+    embed_fn: Callable,
     context: str = "",
     column_context: Optional[dict] = None,
     top_k: int = 5,
     threshold: float = 0.7,
     how: str = "inner",
-    embed_model: str = "all-MiniLM-L6-v2",
-    embed_fn: Optional[Callable] = None,
     batch_size: int = 32,
     embed_threshold: Optional[float] = None,
     max_llm_calls: Optional[int] = None,
@@ -33,18 +32,17 @@ def fuzzy_join(
     cfg = ColumnConfig(
         left_col=left_col,
         right_col=right_col,
+        embed_fn=embed_fn,
         context=context,
         column_context=column_context or {},
         top_k=top_k,
         threshold=threshold,
-        embed_model=embed_model,
-        embed_fn=embed_fn,
-        batch_size=batch_size,  # reserved for future LLM scoring batching; not used for embedding
+        batch_size=batch_size,
         embed_threshold=embed_threshold,
         max_llm_calls=max_llm_calls,
     )
 
-    retriever = EmbeddingRetriever(embed_model=cfg.embed_model, embed_fn=cfg.embed_fn)
+    retriever = EmbeddingRetriever(embed_fn=cfg.embed_fn)
     scorer = LLMScorer(llm)
     merger = Merger()
 

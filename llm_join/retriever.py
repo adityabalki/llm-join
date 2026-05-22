@@ -1,26 +1,15 @@
-from typing import Callable, Optional
+from typing import Callable
 import faiss
 import numpy as np
 
 
 class EmbeddingRetriever:
-    def __init__(
-        self,
-        embed_model: str = "all-MiniLM-L6-v2",
-        embed_fn: Optional[Callable] = None,
-    ):
+    def __init__(self, embed_fn: Callable[[list[str]], np.ndarray]):
         self._embed_fn = embed_fn
-        self._model_name = embed_model
-        self._model = None  # lazy-loaded
 
     def _embed(self, texts: list[str]) -> np.ndarray:
-        if self._embed_fn is not None:
-            arr = self._embed_fn(texts)
-            return np.array(arr, dtype="float32")
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self._model_name)
-        return self._model.encode(texts, show_progress_bar=False, convert_to_numpy=True).astype("float32")
+        arr = self._embed_fn(texts)
+        return np.array(arr, dtype="float32")
 
     def retrieve(
         self,

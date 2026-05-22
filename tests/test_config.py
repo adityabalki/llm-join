@@ -1,57 +1,73 @@
+import numpy as np
 import pytest
 from llm_join.config import ColumnConfig
 
+
+def dummy_embed(texts):
+    return np.random.rand(len(texts), 32).astype("float32")
+
+
 def test_defaults():
-    cfg = ColumnConfig(left_col="a", right_col="b")
+    cfg = ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed)
     assert cfg.top_k == 5
     assert cfg.threshold == 0.7
     assert cfg.context_str == ""
-    assert cfg.embed_model == "all-MiniLM-L6-v2"
     assert cfg.batch_size == 32
     assert cfg.embed_threshold is None
     assert cfg.max_llm_calls is None
 
+
 def test_context_str_global_only():
-    cfg = ColumnConfig(left_col="a", right_col="b", context="drug names")
+    cfg = ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, context="drug names")
     assert cfg.context_str == "drug names"
+
 
 def test_context_str_column_context_only():
     cfg = ColumnConfig(
         left_col="drug", right_col="brand",
+        embed_fn=dummy_embed,
         column_context={"drug": "generic name", "brand": "US brand"},
     )
     assert "generic name" in cfg.context_str
     assert "US brand" in cfg.context_str
 
+
 def test_context_str_both():
     cfg = ColumnConfig(
         left_col="drug", right_col="brand",
+        embed_fn=dummy_embed,
         context="pharma",
         column_context={"drug": "generic"},
     )
     assert "pharma" in cfg.context_str
     assert "generic" in cfg.context_str
 
+
 def test_invalid_threshold():
     with pytest.raises(ValueError):
-        ColumnConfig(left_col="a", right_col="b", threshold=1.5)
+        ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, threshold=1.5)
+
 
 def test_invalid_top_k():
     with pytest.raises(ValueError):
-        ColumnConfig(left_col="a", right_col="b", top_k=0)
+        ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, top_k=0)
+
 
 def test_invalid_embed_threshold():
     with pytest.raises(ValueError):
-        ColumnConfig(left_col="a", right_col="b", embed_threshold=1.5)
+        ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, embed_threshold=1.5)
+
 
 def test_invalid_batch_size():
     with pytest.raises(ValueError):
-        ColumnConfig(left_col="a", right_col="b", batch_size=0)
+        ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, batch_size=0)
+
 
 def test_invalid_max_llm_calls():
     with pytest.raises(ValueError):
-        ColumnConfig(left_col="a", right_col="b", max_llm_calls=0)
+        ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, max_llm_calls=0)
+
 
 def test_empty_left_col():
     with pytest.raises(ValueError):
-        ColumnConfig(left_col="", right_col="b")
+        ColumnConfig(left_col="", right_col="b", embed_fn=dummy_embed)
