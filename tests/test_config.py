@@ -39,3 +39,19 @@ def test_invalid_threshold():
 def test_invalid_top_k():
     with pytest.raises(ValueError):
         ColumnConfig(left_col="a", right_col="b", top_k=0)
+
+def test_invalid_embed_threshold():
+    with pytest.raises(ValueError):
+        ColumnConfig(left_col="a", right_col="b", embed_threshold=1.5)
+
+def test_invalid_batch_size():
+    with pytest.raises(ValueError):
+        ColumnConfig(left_col="a", right_col="b", batch_size=0)
+
+def test_invalid_max_llm_calls():
+    with pytest.raises(ValueError):
+        ColumnConfig(left_col="a", right_col="b", max_llm_calls=0)
+
+def test_empty_left_col():
+    with pytest.raises(ValueError):
+        ColumnConfig(left_col="", right_col="b")

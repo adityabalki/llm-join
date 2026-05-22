@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
+
+import numpy as np
 
 
 @dataclass
@@ -7,20 +9,30 @@ class ColumnConfig:
     left_col: str
     right_col: str
     context: str = ""
-    column_context: dict = field(default_factory=dict)
+    column_context: dict[str, str] = field(default_factory=dict)
     top_k: int = 5
     threshold: float = 0.7
     embed_model: str = "all-MiniLM-L6-v2"
-    embed_fn: Optional[object] = None  # callable(list[str]) -> np.ndarray
+    embed_fn: Optional[Callable[[list[str]], np.ndarray]] = None
     batch_size: int = 32
     embed_threshold: Optional[float] = None
     max_llm_calls: Optional[int] = None
 
     def __post_init__(self):
+        if not self.left_col:
+            raise ValueError("left_col must not be empty")
+        if not self.right_col:
+            raise ValueError("right_col must not be empty")
         if not 0.0 < self.threshold <= 1.0:
             raise ValueError(f"threshold must be in (0, 1], got {self.threshold}")
         if self.top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {self.top_k}")
+        if self.batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {self.batch_size}")
+        if self.embed_threshold is not None and not 0.0 < self.embed_threshold <= 1.0:
+            raise ValueError(f"embed_threshold must be in (0, 1], got {self.embed_threshold}")
+        if self.max_llm_calls is not None and self.max_llm_calls < 1:
+            raise ValueError(f"max_llm_calls must be >= 1, got {self.max_llm_calls}")
 
     @property
     def context_str(self) -> str:
