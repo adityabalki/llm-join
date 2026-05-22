@@ -1,4 +1,5 @@
 from typing import Callable, Optional
+import faiss
 import numpy as np
 
 
@@ -27,7 +28,8 @@ class EmbeddingRetriever:
         corpus_vals: list[str],
         top_k: int = 5,
     ) -> list[list[str]]:
-        import faiss
+        if not corpus_vals:
+            return [[] for _ in query_vals]
 
         top_k = min(top_k, len(corpus_vals))
         corpus_vecs = self._embed(corpus_vals)
