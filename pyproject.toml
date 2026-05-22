@@ -22,3 +22,15 @@ dev = ["pytest>=7", "pytest-asyncio>=0.21"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["llm_join"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".claude/",
+    "tests/",
+    "docs/",
+    "*.pyc",
+    "__pycache__/",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
