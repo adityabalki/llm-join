@@ -7,7 +7,7 @@
 ```python
 from llm_join import fuzzy_join
 
-result = fuzzy_join(df1, df2, left_on="vendor", right_on="supplier_name", llm=my_llm)
+result = fuzzy_join(df1, df2, left_on="vendor", right_on="supplier_name", llm=my_llm, embed_fn=my_embed)
 ```
 
 ---
@@ -124,10 +124,78 @@ df1 (left)                    df2 (right)
                                best match above threshold → join row
 ```
 
-1. **Embed** both columns with `sentence-transformers` (local, free)
+1. **Embed** both columns using your `embed_fn`
 2. **Retrieve** top-K candidates per row using faiss ANN search
 3. **Score** each candidate with your LLM, with domain context injected into the prompt
 4. **Merge** matched rows — same API as `pd.merge`
+
+---
+
+## Cost & Scale
+
+### The problem with naive LLM joins
+
+If you sent every possible pair to the LLM:
+
+| Left rows | Right rows | Pairs to score | Cost (gpt-4o-mini ~$0.30/1M tokens) |
+|-----------|------------|----------------|--------------------------------------|
+| 1,000 | 10,000 | 10,000,000 | ~$150 |
+| 10,000 | 100,000 | 1,000,000,000 | ~$15,000 |
+| 100,000 | 1,000,000 | 100,000,000,000 | impossible |
+
+**llm-join solves this with a two-stage pipeline.**
+
+### Stage 1: Embeddings narrow the search (cheap)
+
+Convert every value to a vector. Use faiss to find the top-K most similar candidates per row. This is pure math — no API calls, runs in milliseconds.
+
+```
+10,000 left rows × 100,000 right rows = 1,000,000,000 possible pairs
+                                        ↓  embed + faiss (top_k=5)
+                                        50,000 candidate pairs
+                                        99.995% of pairs eliminated for free
+```
+
+### Stage 2: LLM scores only the hard cases (accurate)
+
+Your LLM sees a small batch of plausible candidates per row — not the full cross product. It decides the final match with full semantic reasoning.
+
+```
+"aspirin" candidates after embedding:
+  0. "Bayer Aspirin"        → LLM score: 0.95 ✓ match
+  1. "acetylsalicylic acid" → LLM score: 0.98 ✓ match (even better)
+  2. "aspirin 100mg tablet" → LLM score: 0.91 ✓ match
+  3. "ibuprofen"            → LLM score: 0.03 ✗ skip
+  4. "naproxen sodium"      → LLM score: 0.02 ✗ skip
+```
+
+### Real cost example
+
+| Setup | LLM calls | Estimated cost |
+|-------|-----------|----------------|
+| 10k × 100k, top_k=5 | 50,000 | ~$0.75 |
+| 10k × 100k, top_k=3 | 30,000 | ~$0.45 |
+| 10k × 100k, embed_threshold=0.95 | ~5,000 (obvious matches skip LLM) | ~$0.08 |
+
+### Further cost controls
+
+```python
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor", right_on="supplier",
+    llm=my_llm,
+    embed_fn=my_embed,
+    top_k=3,                # fewer candidates = fewer LLM tokens per row
+    embed_threshold=0.95,   # skip LLM entirely if embedding match score > 0.95
+    max_llm_calls=1000,     # hard cap — warns and returns partial result if hit
+)
+```
+
+| Parameter | Effect |
+|-----------|--------|
+| `top_k=3` (default 5) | 40% fewer LLM tokens |
+| `embed_threshold=0.95` | Skip LLM for obvious matches — typically saves 30–60% |
+| `max_llm_calls=N` | Budget guard — never exceeds N LLM calls |
 
 ---
 
@@ -141,6 +209,7 @@ result = fuzzy_join(
     left_on="drug_name",
     right_on="brand_name",
     llm=my_llm,
+    embed_fn=my_embed,
 )
 ```
 
@@ -152,6 +221,7 @@ result = fuzzy_join(
     left_on="drug_name",
     right_on="brand_name",
     llm=my_llm,
+    embed_fn=my_embed,
     context="pharmaceutical drug names — match generic to brand equivalents",
     column_context={
         "drug_name": "generic drug name (e.g. aspirin, ibuprofen)",
@@ -168,6 +238,7 @@ result = fuzzy_join(
     left_on="vendor",
     right_on="supplier_name",
     llm=my_llm,
+    embed_fn=my_embed,
     return_reasoning=True,
 )
 
@@ -193,7 +264,7 @@ result = fuzzy_join(
 ### Left join (keep unmatched rows)
 
 ```python
-result = fuzzy_join(df1, df2, left_on="a", right_on="b", llm=my_llm, how="left")
+result = fuzzy_join(df1, df2, left_on="a", right_on="b", llm=my_llm, embed_fn=my_embed, how="left")
 ```
 
 ### Multi-column join key
@@ -204,6 +275,7 @@ result = fuzzy_join(
     left_on=["drug", "dosage_form"],   # concatenated as join key
     right_on="product_description",
     llm=my_llm,
+    embed_fn=my_embed,
 )
 ```
 
@@ -257,14 +329,13 @@ llm = lambda p: requests.post(
 |-----------|---------|-------------|
 | `left_on` | required | Column name(s) in df1 |
 | `right_on` | required | Column name(s) in df2 |
-| `llm` | required | Callable `(prompt: str) -> str` |
+| `llm` | required | Callable `(prompt: str) -> str` — your LLM function |
+| `embed_fn` | required | Callable `(list[str]) -> np.ndarray` — your embedding function |
 | `context` | `""` | Global domain context injected into LLM prompt |
 | `column_context` | `{}` | Per-column context dict `{"col": "description"}` |
 | `top_k` | `5` | Embedding candidates retrieved per row before LLM scoring |
 | `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match |
 | `how` | `"inner"` | Join type: `inner` / `left` / `right` / `outer` |
-| `embed_model` | `"all-MiniLM-L6-v2"` | sentence-transformers model for retrieval |
-| `embed_fn` | `None` | Custom embed function `(list[str]) -> np.ndarray` (overrides embed_model) |
 | `embed_threshold` | `None` | Skip LLM when embedding score is decisive (saves cost) |
 | `max_llm_calls` | `None` | Hard cap on LLM calls — returns partial result with warning if hit |
 | `return_reasoning` | `False` | Append `_llm_score`, `_llm_reasoning`, `_embed_rank` columns |
