@@ -32,7 +32,16 @@ You have two DataFrames. Same data, different text:
 ## Install
 
 ```bash
-pip install llm-join
+# From GitHub (not yet on PyPI)
+pip install git+https://github.com/adityabalki/llm-join.git
+
+# Or clone and install locally
+git clone https://github.com/adityabalki/llm-join.git
+cd llm-join
+pip install -e .
+
+# Or copy the wheel to air-gapped machines
+pip install llm_join-0.1.0-py3-none-any.whl
 ```
 
 ---
@@ -62,6 +71,12 @@ def llm(prompt):
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}]
     ).choices[0].message.content
+
+# Wire up your embedding function
+import numpy as np
+def my_embed(texts):
+    response = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return np.array([d.embedding for d in response.data], dtype="float32")
 
 # Join (inner by default — only rows that matched)
 result = fuzzy_join(
@@ -109,8 +124,8 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with c
 | **Finance** | Expense report payee | GL account / vendor master | Reconcile transactions automatically |
 | **Legal / M&A** | Contract party name | Corporate registry | Identify true legal entity |
 | **Compliance** | Customer name | OFAC sanctions list | Sanctions screening at scale |
-| **Pharma** | Generic drug name | Brand name | Generic - brand equivalence |
-| **HR** | Resume job title | Standard taxonomy | Normalize titles  |
+| **Pharma** | Generic drug name | Brand name | Generic ↔ brand equivalence |
+| **HR** | Resume job title | Standard taxonomy | Normalize titles for comp analysis |
 | **E-commerce** | Marketplace listing | Master product catalog | Deduplicate across platforms |
 | **Research** | Author name | Citation database | Disambiguate authors |
 | **Government** | Vendor name | Tax registry | Consolidate procurement spend |
@@ -161,17 +176,17 @@ Convert every value to a vector. Use faiss to find the top-K most similar candid
 
 ### Stage 2: LLM scores only the hard cases (accurate)
 
-Your LLM sees a small batch of plausible candidates per row — not the full cross product. It decides the final match with full semantic reasoning.
+Your LLM sees a small batch of plausible candidates per row — not the full cross product. It scores each candidate; the highest score above `threshold` wins. One best match per left row.
 
 Query: `"aspirin"`
 
 | Rank | Candidate | LLM Score | Decision |
 |---:|---|---:|---|
-| 0 | `acetylsalicylic acid` | 0.98 | ✓ match |
-| 1 | `Bayer Aspirin` | 0.95 | ✓ match |
-| 2 | `aspirin 100mg tablet` | 0.91 | ✓ match |
-| 3 | `ibuprofen` | 0.03 | ✗ skip |
-| 4 | `naproxen sodium` | 0.02 | ✗ skip |
+| 0 | `acetylsalicylic acid` | 0.98 | ✓ **best match — joined** |
+| 1 | `Bayer Aspirin` | 0.95 | scored, not selected |
+| 2 | `aspirin 100mg tablet` | 0.91 | scored, not selected |
+| 3 | `ibuprofen` | 0.03 | ✗ below threshold |
+| 4 | `naproxen sodium` | 0.02 | ✗ below threshold |
 
 ### Real cost example
 
@@ -246,12 +261,12 @@ result = fuzzy_join(
     return_reasoning=True,
 )
 
-print(result[["vendor", "supplier_name", "_llm_score", "_llm_reasoning"]])
+print(result[["vendor", "supplier_name", "_llm_score", "_llm_reasoning", "_embed_rank", "_match_method"]])
 ```
 
-| vendor | supplier_name | _llm_score | _llm_reasoning |
-|---|---|---:|---|
-| Goldman Sachs & Co. | The Goldman Sachs Group Inc | 0.97 | same firm, legal name variant |
+| vendor | supplier_name | _llm_score | _llm_reasoning | _embed_rank | _match_method |
+|---|---|---:|---|---:|---|
+| Goldman Sachs & Co. | The Goldman Sachs Group Inc | 0.97 | same firm, legal name variant | 0 | llm |
 
 ### Control cost
 
@@ -261,6 +276,7 @@ result = fuzzy_join(
     left_on="vendor",
     right_on="supplier_name",
     llm=my_llm,
+    embed_fn=my_embed,
     embed_threshold=0.95,   # skip LLM if embedding match is obvious
     max_llm_calls=500,      # hard cap — warns and returns partial result if hit
     top_k=3,                # fewer candidates = fewer LLM tokens
@@ -365,6 +381,43 @@ llm = lambda p: requests.post(
 ).json()["response"]
 ```
 
+## Works with Any Embedding Function
+
+Pass any callable `(list[str]) -> np.ndarray` (shape `[n, dim]`, dtype `float32`).
+
+```python
+import numpy as np
+
+# OpenAI embeddings
+import openai
+client = openai.OpenAI()
+def my_embed(texts):
+    response = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return np.array([d.embedding for d in response.data], dtype="float32")
+
+# Cohere
+import cohere
+co = cohere.Client("YOUR_KEY")
+def my_embed(texts):
+    response = co.embed(texts=texts, model="embed-english-v3.0", input_type="search_document")
+    return np.array(response.embeddings, dtype="float32")
+
+# sentence-transformers (local)
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer("all-MiniLM-L6-v2")
+def my_embed(texts):
+    return model.encode(texts, convert_to_numpy=True).astype("float32")
+
+# Any custom endpoint
+import requests
+def my_embed(texts):
+    response = requests.post(
+        "https://your-embed-api.com/embed",
+        json={"texts": texts}
+    ).json()
+    return np.array(response["embeddings"], dtype="float32")
+```
+
 ---
 
 ## vs. Alternatives
@@ -395,6 +448,7 @@ llm = lambda p: requests.post(
 | `context` | `""` | Global domain context injected into LLM prompt |
 | `column_context` | `{}` | Per-column context dict `{"col": "description"}` |
 | `top_k` | `5` | Embedding candidates retrieved per row before LLM scoring |
+| `batch_size` | `32` | Reserved for future LLM batching (passed through to config) |
 | `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match |
 | `how` | `"inner"` | Join type: `inner` / `left` / `right` / `outer` |
 | `embed_threshold` | `None` | Skip LLM when embedding score is decisive (saves cost) |
