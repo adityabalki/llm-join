@@ -21,36 +21,37 @@ def valid_response(scores):
 
 def test_returns_best_match():
     resp = valid_response([
-        {"score": 0.95, "reasoning": "same drug"},
+        {"score": 0.95, "reasoning": "strong match"},
         {"score": 0.10, "reasoning": "different"},
     ])
     scorer = LLMScorer(make_llm(resp))
-    result = scorer.score("aspirin", ["Bayer Aspirin", "ibuprofen"], "pharma")
-    assert result.right_val == "Bayer Aspirin"
-    assert result.score == 0.95
+    result = scorer.score("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc", "JPMorgan Chase"], "company names")
+    assert len(result) == 1
+    assert result[0].right_val == "The Goldman Sachs Group Inc"
+    assert result[0].score == 0.95
 
 
-def test_returns_none_when_all_below_threshold():
+def test_returns_empty_when_all_below_threshold():
     resp = valid_response([
         {"score": 0.10, "reasoning": "no match"},
         {"score": 0.05, "reasoning": "no match"},
     ])
     scorer = LLMScorer(make_llm(resp))
-    result = scorer.score("aspirin", ["ibuprofen", "tylenol"], "pharma", threshold=0.7)
-    assert result is None
+    result = scorer.score("Goldman Sachs & Co.", ["JPMorgan", "Citibank"], "company names", threshold=0.7)
+    assert result == []  # LLM ran OK, nothing above threshold
 
 
 def test_reasoning_captured():
-    resp = valid_response([{"score": 0.9, "reasoning": "brand contains generic"}])
+    resp = valid_response([{"score": 0.9, "reasoning": "legal name variant"}])
     scorer = LLMScorer(make_llm(resp))
-    result = scorer.score("aspirin", ["Bayer Aspirin"], "pharma")
-    assert result.reasoning == "brand contains generic"
+    result = scorer.score("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc"], "company names")
+    assert result[0].reasoning == "legal name variant"
 
 
-def test_malformed_json_returns_none_with_warning(recwarn):
+def test_malformed_json_returns_empty_with_warning(recwarn):
     scorer = LLMScorer(make_llm("not json at all"))
-    result = scorer.score("aspirin", ["Bayer Aspirin"], "pharma")
-    assert result is None
+    result = scorer.score("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc"], "company names")
+    assert result == []  # parse failed → empty, not None (None = LLM exception)
     assert len(recwarn) > 0
 
 
@@ -60,15 +61,41 @@ def test_embed_rank_set_correctly():
         {"score": 0.9, "reasoning": "strong"},
     ])
     scorer = LLMScorer(make_llm(resp))
-    result = scorer.score("aspirin", ["ibuprofen", "Bayer Aspirin"], "pharma")
-    assert result.embed_rank == 1  # index of best match in candidates list
+    result = scorer.score("Goldman Sachs & Co.", ["JPMorgan", "The Goldman Sachs Group Inc"], "company names")
+    assert result[0].embed_rank == 1  # index 1 had the best score
+
+
+def test_tied_matches_all_returned():
+    resp = valid_response([
+        {"score": 0.90, "reasoning": "match A"},
+        {"score": 0.90, "reasoning": "match B"},
+        {"score": 0.50, "reasoning": "weak"},
+    ])
+    scorer = LLMScorer(make_llm(resp))
+    result = scorer.score("Goldman Sachs & Co.", ["Entity A", "Entity B", "Entity C"], "company names")
+    assert len(result) == 2  # both tied at 0.90
+    assert all(r.score == 0.90 for r in result)
+    assert "[tied:" in result[0].reasoning
+
+
+def test_duplicate_index_deduplicated():
+    # LLM returns same index twice — should only produce one result
+    raw = json.dumps([
+        {"index": 0, "score": 0.95, "reasoning": "first"},
+        {"index": 0, "score": 0.95, "reasoning": "duplicate"},
+    ])
+    scorer = LLMScorer(make_llm(raw))
+    result = scorer.score("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc"], "company names")
+    assert len(result) == 1
+
 
 def test_async_llm_raises_on_sync_score():
     async def async_llm(prompt: str) -> str:
         return "[]"
     scorer = LLMScorer(async_llm)
     with pytest.raises(TypeError, match="score_async"):
-        scorer.score("aspirin", ["Bayer Aspirin"], "pharma")
+        scorer.score("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc"], "company names")
+
 
 @pytest.mark.asyncio
 async def test_score_async_with_async_llm():
@@ -76,12 +103,23 @@ async def test_score_async_with_async_llm():
     async def async_llm(prompt: str) -> str:
         return resp
     scorer = LLMScorer(async_llm)
-    result = await scorer.score_async("aspirin", ["Bayer Aspirin"], "pharma")
+    result = await scorer.score_async("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc"], "company names")
     assert result is not None
-    assert result.score == 0.9
+    assert len(result) == 1
+    assert result[0].score == 0.9
 
-def test_non_list_json_returns_none_with_warning(recwarn):
+
+def test_non_list_json_returns_empty_with_warning(recwarn):
     scorer = LLMScorer(make_llm('{"error": "model overloaded"}'))
-    result = scorer.score("aspirin", ["Bayer Aspirin"], "pharma")
-    assert result is None
+    result = scorer.score("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc"], "company names")
+    assert result == []
     assert len(recwarn) > 0
+
+
+def test_llm_failure_returns_none(recwarn):
+    # None = LLM raised exception (triggers embed fallback in join.py)
+    def failing_llm(prompt: str) -> str:
+        raise RuntimeError("API down")
+    scorer = LLMScorer(failing_llm, max_retries=0)
+    result = scorer.score("Goldman Sachs & Co.", ["The Goldman Sachs Group Inc"], "company names")
+    assert result is None  # not [] — signals failure to caller
