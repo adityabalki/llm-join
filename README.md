@@ -185,7 +185,7 @@ taxonomy_df = pd.DataFrame({"team": [
 
 ### Step 1 — Embed both columns
 
-Every value is converted to a vector using your `embed_fn`. No API call — runs locally in milliseconds.
+Every value is converted to a vector using your `embed_fn`.
 
 | Value | Vector (simplified) |
 |---|---|
