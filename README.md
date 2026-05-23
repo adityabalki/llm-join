@@ -50,7 +50,7 @@ You have two DataFrames. Same data, different text:
 |-------------|--------------|
 | `Goldman Sachs & Co.` | `The Goldman Sachs Group Inc` |
 | `Sony WH-1000XM5` | `SONY-WH1000XM5-BLK` |
-| `aspirin 100mg` | `Bayer Aspirin Tablet` |
+| `MSFT Q4 license renewal` | `Microsoft Enterprise Agreement Q4-2024` |
 | `Python programming` | `Python (language)` |
 
 `pd.merge` returns nothing. Fuzzy string matching gets the wrong answer. You end up writing custom logic — or doing it by hand.
@@ -136,7 +136,7 @@ print(result)
 Exact string match only. Fails on any variation in naming.
 
 ### vs. fuzzy string matching (`fuzzywuzzy`, `rapidfuzz`)
-Character similarity, not semantic meaning. `"Apple Inc"` vs `"Apple Incorporated"` scores high. `"aspirin"` vs `"acetylsalicylic acid"` scores low — even though they are the same drug.
+Character similarity, not semantic meaning. `"iPhone 14 Pro"` vs `"iPhone 14 Pro Max"` scores high — but they are different products. `"CABLE-USBC-200CM-BLK"` vs `"USB-C charging cable 2m black"` scores near zero — even though they are the same item.
 
 ### vs. embedding similarity alone
 Fast and cheap, but no reasoning. Can't explain *why* two values match or catch false positives confidently.
@@ -154,8 +154,8 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with c
 | **Finance** | Expense report payee | GL account / vendor master | Reconcile transactions automatically |
 | **Legal / M&A** | Contract party name | Corporate registry | Identify true legal entity |
 | **Compliance** | Customer name | OFAC sanctions list | Sanctions screening at scale |
-| **Pharma** | Generic drug name | Brand name | Generic ↔ brand equivalence |
-| **HR** | Resume job title | Standard taxonomy | Normalize titles for comp analysis |
+| **Retail / e-commerce** | Marketplace product listing | Master product catalog | Deduplicate listings across 50+ sellers |
+| **Logistics** | Shipment description | Harmonized tariff code | Auto-classify goods at customs |
 | **E-commerce** | Marketplace listing | Master product catalog | Deduplicate across platforms |
 | **Research** | Author name | Citation database | Disambiguate authors |
 | **Government** | Vendor name | Tax registry | Consolidate procurement spend |
@@ -165,95 +165,103 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with c
 
 ## How It Works
 
-**Example:** Match resume skills to internal team taxonomy.
+**Example:** A retailer's internal purchase orders use plain English product names. Their supplier sends a catalog with SKU codes. `pd.merge` matches nothing. llm-join bridges the gap.
 
 ```python
-resume_df = pd.DataFrame({"skill": [
-    "tableau/power bi developer",
-    "kubernetes cluster admin",
-    "pytorch model training",
-]})
+orders_df = pd.DataFrame({"product_name": [
+    "USB-C charging cable 2m black",
+    "ergonomic mesh office chair",
+    "27-inch 4K monitor",
+], "qty": [500, 30, 12]})
 
-taxonomy_df = pd.DataFrame({"team": [
-    "visualization team",
-    "data engineering",
-    "ml platform",
-    "backend infrastructure",
-    "devops & platform",
-]})
+catalog_df = pd.DataFrame({"sku": [
+    "CABLE-USBC-200CM-BLK",
+    "CABLE-USBA-200CM-BLK",
+    "CHAIR-MESH-ERG-ADJUSTABLE",
+    "CHAIR-TASK-FIXED-BLK",
+    "MON-27-4K-IPS-HDMI2",
+], "unit_price": [8.99, 6.49, 349.00, 189.00, 429.00]})
+
+result = fuzzy_join(
+    orders_df, catalog_df,
+    left_on="product_name", right_on="sku",
+    llm=my_llm, embed_fn=my_embed,
+    context="procurement — match buyer product descriptions to supplier SKU codes",
+    top_k=3, threshold=0.7,
+)
 ```
 
 ### Step 1 — Embed both columns
 
-Every value is converted to a vector using your `embed_fn`.
+Every value is converted to a vector. No API call — pure math, milliseconds.
 
-| Value | Vector (simplified) |
+| Value | Meaning captured in vector |
 |---|---|
-| `"tableau/power bi developer"` | `[0.82, 0.10, 0.04, ...]` |
-| `"kubernetes cluster admin"` | `[0.11, 0.09, 0.78, ...]` |
-| `"pytorch model training"` | `[0.06, 0.88, 0.12, ...]` |
-| `"visualization team"` | `[0.79, 0.08, 0.06, ...]` |
-| `"devops & platform"` | `[0.09, 0.07, 0.81, ...]` |
-| `"ml platform"` | `[0.05, 0.91, 0.09, ...]` |
+| `"USB-C charging cable 2m black"` | cable / USB-C / length / color |
+| `"ergonomic mesh office chair"` | seating / ergonomic / mesh |
+| `"27-inch 4K monitor"` | display / size / resolution |
+| `"CABLE-USBC-200CM-BLK"` | cable / USB-C / 200cm / black |
+| `"CHAIR-MESH-ERG-ADJUSTABLE"` | seating / mesh / ergonomic |
+| `"MON-27-4K-IPS-HDMI2"` | display / 27in / 4K |
 
 ### Step 2 — FAISS retrieves top-K candidates (no LLM)
 
-For each left row, faiss finds the `top_k` most similar right values by cosine similarity. Everything else is eliminated — no LLM call needed.
+For each left row, faiss finds the `top_k` closest right vectors by cosine similarity. Everything else is eliminated — no LLM call needed.
 
-**Query: `"tableau/power bi developer"` → top_k=3**
-
-| Rank | Candidate | Embed Score | Reaches LLM? |
-|---:|---|---:|---|
-| 0 | `visualization team` | 0.81 | ✓ yes |
-| 1 | `data engineering` | 0.54 | ✓ yes |
-| 2 | `ml platform` | 0.31 | ✓ yes |
-| — | `backend infrastructure` | 0.18 | ✗ eliminated |
-| — | `devops & platform` | 0.12 | ✗ eliminated |
-
-**Query: `"kubernetes cluster admin"` → top_k=3**
+**Query: `"USB-C charging cable 2m black"` → top_k=3**
 
 | Rank | Candidate | Embed Score | Reaches LLM? |
 |---:|---|---:|---|
-| 0 | `devops & platform` | 0.87 | ✓ yes |
-| 1 | `backend infrastructure` | 0.72 | ✓ yes |
-| 2 | `data engineering` | 0.38 | ✓ yes |
-| — | `visualization team` | 0.09 | ✗ eliminated |
-| — | `ml platform` | 0.11 | ✗ eliminated |
+| 0 | `CABLE-USBC-200CM-BLK` | 0.89 | ✓ yes |
+| 1 | `CABLE-USBA-200CM-BLK` | 0.71 | ✓ yes |
+| 2 | `CHAIR-TASK-FIXED-BLK` | 0.34 | ✓ yes (shares "BLK") |
+| — | `CHAIR-MESH-ERG-ADJUSTABLE` | 0.11 | ✗ eliminated |
+| — | `MON-27-4K-IPS-HDMI2` | 0.08 | ✗ eliminated |
 
-**Query: `"pytorch model training"` → top_k=3**
+**Query: `"ergonomic mesh office chair"` → top_k=3**
 
 | Rank | Candidate | Embed Score | Reaches LLM? |
 |---:|---|---:|---|
-| 0 | `ml platform` | 0.93 | ✓ yes |
-| 1 | `data engineering` | 0.61 | ✓ yes |
-| 2 | `backend infrastructure` | 0.29 | ✓ yes |
-| — | `visualization team` | 0.07 | ✗ eliminated |
-| — | `devops & platform` | 0.21 | ✗ eliminated |
+| 0 | `CHAIR-MESH-ERG-ADJUSTABLE` | 0.91 | ✓ yes |
+| 1 | `CHAIR-TASK-FIXED-BLK` | 0.74 | ✓ yes |
+| 2 | `CABLE-USBC-200CM-BLK` | 0.19 | ✓ yes |
+| — | `MON-27-4K-IPS-HDMI2` | 0.06 | ✗ eliminated |
+| — | `CABLE-USBA-200CM-BLK` | 0.14 | ✗ eliminated |
+
+**Query: `"27-inch 4K monitor"` → top_k=3**
+
+| Rank | Candidate | Embed Score | Reaches LLM? |
+|---:|---|---:|---|
+| 0 | `MON-27-4K-IPS-HDMI2` | 0.94 | ✓ yes |
+| 1 | `CABLE-USBC-200CM-BLK` | 0.22 | ✓ yes |
+| 2 | `CHAIR-TASK-FIXED-BLK` | 0.17 | ✓ yes |
+| — | `CHAIR-MESH-ERG-ADJUSTABLE` | 0.09 | ✗ eliminated |
+| — | `CABLE-USBA-200CM-BLK` | 0.12 | ✗ eliminated |
 
 **Result: 3 LLM calls instead of 3 × 5 = 15 pair-by-pair calls.**
 
 ### Step 3 — One LLM call per left row scores all candidates
 
-All top-K candidates are batched into a single prompt. The LLM returns a JSON array — one call, all candidates scored.
+All top-K candidates go into a single prompt. LLM returns a JSON array — one API call, all candidates scored.
 
-**Prompt sent for `"tableau/power bi developer"`:**
+**Prompt sent for `"USB-C charging cable 2m black"`:**
 ```
-Context: resume skills — match to internal team taxonomy
+Context: procurement — match buyer product descriptions to supplier SKU codes
 
-LEFT: "tableau/power bi developer"
+LEFT: "USB-C charging cable 2m black"
 
 Score each candidate (0.0–1.0):
-0. visualization team
-1. data engineering
-2. ml platform
+0. CABLE-USBC-200CM-BLK
+1. CABLE-USBA-200CM-BLK
+2. CHAIR-TASK-FIXED-BLK
 ```
 
 **LLM response:**
 ```json
 [
-  {"index": 0, "score": 0.92, "reasoning": "Tableau and Power BI are BI visualization tools. This person belongs on the visualization team."},
-  {"index": 1, "score": 0.31, "reasoning": "BI tools consume data pipelines but the core skill is visualization, not engineering."},
-  {"index": 2, "score": 0.08, "reasoning": "No overlap — ML platform is about model training infrastructure."}
+  {"index": 0, "score": 0.97, "reasoning": "USBC = USB-C, 200CM = 2m, BLK = black. Exact match on all three specs."},
+  {"index": 1, "score": 0.38, "reasoning": "Correct length and color but USBA is USB-A, not USB-C. Wrong connector type."},
+  {"index": 2, "score": 0.04, "reasoning": "This is a chair SKU. No relation to a cable."}
 ]
 ```
 
@@ -261,17 +269,23 @@ Score each candidate (0.0–1.0):
 
 | Candidate | LLM Score | Decision |
 |---|---:|---|
-| `visualization team` | 0.92 | ✓ **best match — joined** |
-| `data engineering` | 0.31 | ✗ below threshold |
-| `ml platform` | 0.08 | ✗ below threshold |
+| `CABLE-USBC-200CM-BLK` | 0.97 | ✓ **best match — joined** |
+| `CABLE-USBA-200CM-BLK` | 0.38 | ✗ below threshold |
+| `CHAIR-TASK-FIXED-BLK` | 0.04 | ✗ below threshold |
 
 ### Step 4 — Merge matched rows
 
-| skill | team | _llm_score | _llm_reasoning |
-|---|---|---:|---|
-| tableau/power bi developer | visualization team | 0.92 | Tableau and Power BI are BI visualization tools... |
-| kubernetes cluster admin | devops & platform | 0.89 | Kubernetes administration is core devops/platform work... |
-| pytorch model training | ml platform | 0.95 | PyTorch training is the primary workload of the ML platform team... |
+```python
+print(result)
+```
+
+| product_name | qty | sku | unit_price |
+|---|---:|---|---:|
+| USB-C charging cable 2m black | 500 | CABLE-USBC-200CM-BLK | 8.99 |
+| ergonomic mesh office chair | 30 | CHAIR-MESH-ERG-ADJUSTABLE | 349.00 |
+| 27-inch 4K monitor | 12 | MON-27-4K-IPS-HDMI2 | 429.00 |
+
+The LLM correctly rejected `CABLE-USBA-200CM-BLK` (wrong connector) even though embedding scored it 0.71 — this is the case where LLM reasoning earns its cost.
 
 ---
 
@@ -303,15 +317,15 @@ Convert every value to a vector. Use faiss to find the top-K most similar candid
 
 Your LLM sees a small batch of plausible candidates per row — not the full cross product. It scores each candidate; the highest score above `threshold` wins. One best match per left row.
 
-Query: `"aspirin"`
+Query: `"USB-C charging cable 2m black"`
 
 | Rank | Candidate | LLM Score | Decision |
 |---:|---|---:|---|
-| 0 | `acetylsalicylic acid` | 0.98 | ✓ **best match — joined** |
-| 1 | `Bayer Aspirin` | 0.95 | scored, not selected |
-| 2 | `aspirin 100mg tablet` | 0.91 | scored, not selected |
-| 3 | `ibuprofen` | 0.03 | ✗ below threshold |
-| 4 | `naproxen sodium` | 0.02 | ✗ below threshold |
+| 0 | `CABLE-USBC-200CM-BLK` | 0.97 | ✓ **best match — joined** |
+| 1 | `CABLE-USBC-100CM-BLK` | 0.71 | scored, not selected (wrong length) |
+| 2 | `CABLE-USBA-200CM-BLK` | 0.38 | scored, not selected (wrong connector) |
+| 3 | `CHAIR-TASK-FIXED-BLK` | 0.04 | ✗ below threshold |
+| 4 | `MON-27-4K-IPS-HDMI2` | 0.01 | ✗ below threshold |
 
 ### Real cost example
 
@@ -349,11 +363,12 @@ result = fuzzy_join(
 
 ```python
 result = fuzzy_join(
-    df1, df2,
-    left_on="drug_name",
-    right_on="brand_name",
+    orders_df, catalog_df,
+    left_on="product_name",
+    right_on="sku",
     llm=my_llm,
     embed_fn=my_embed,
+    context="procurement — match buyer product descriptions to supplier SKU codes",
 )
 ```
 
@@ -361,15 +376,15 @@ result = fuzzy_join(
 
 ```python
 result = fuzzy_join(
-    df1, df2,
-    left_on="drug_name",
-    right_on="brand_name",
+    orders_df, catalog_df,
+    left_on="product_name",
+    right_on="sku",
     llm=my_llm,
     embed_fn=my_embed,
-    context="pharmaceutical drug names — match generic to brand equivalents",
+    context="procurement — match buyer product descriptions to supplier SKU codes",
     column_context={
-        "drug_name": "generic drug name (e.g. aspirin, ibuprofen)",
-        "brand_name": "US brand name sold in pharmacies",
+        "product_name": "plain English product description written by a buyer",
+        "sku": "supplier stock-keeping unit code, typically uppercase with hyphens",
     },
 )
 ```
@@ -424,12 +439,16 @@ unmatched = result[result["b"].isna()]
 ### Multi-column join key
 
 ```python
+# orders_df has separate "product_name" and "category" columns
+# catalog_df has a single "sku_description" column like "CABLE / USB-C / 200CM / BLK"
+
 result = fuzzy_join(
-    df1, df2,
-    left_on=["drug", "dosage_form"],   # concatenated as join key
-    right_on="product_description",
+    orders_df, catalog_df,
+    left_on=["product_name", "category"],   # concatenated: "USB-C cable 2m · electronics"
+    right_on="sku_description",
     llm=my_llm,
     embed_fn=my_embed,
+    context="procurement — match buyer product + category to supplier SKU description",
 )
 ```
 
