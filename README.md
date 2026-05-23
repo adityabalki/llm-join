@@ -151,25 +151,25 @@ If you sent every possible pair to the LLM:
 
 Convert every value to a vector. Use faiss to find the top-K most similar candidates per row. This is pure math — no API calls, runs in milliseconds.
 
-```
-10,000 left rows × 100,000 right rows = 1,000,000,000 possible pairs
-                                        ↓  embed + faiss (top_k=5)
-                                        50,000 candidate pairs
-                                        99.995% of pairs eliminated for free
-```
+| | |
+|---|---|
+| Input pairs | 10,000 × 100,000 = **1,000,000,000** |
+| After embed + faiss (`top_k=5`) | **50,000** candidate pairs |
+| Eliminated for free | **99.995%** of all pairs |
 
 ### Stage 2: LLM scores only the hard cases (accurate)
 
 Your LLM sees a small batch of plausible candidates per row — not the full cross product. It decides the final match with full semantic reasoning.
 
-```
-"aspirin" candidates after embedding:
-  0. "Bayer Aspirin"        → LLM score: 0.95 ✓ match
-  1. "acetylsalicylic acid" → LLM score: 0.98 ✓ match (even better)
-  2. "aspirin 100mg tablet" → LLM score: 0.91 ✓ match
-  3. "ibuprofen"            → LLM score: 0.03 ✗ skip
-  4. "naproxen sodium"      → LLM score: 0.02 ✗ skip
-```
+Query: `"aspirin"`
+
+| Rank | Candidate | LLM Score | Decision |
+|---:|---|---:|---|
+| 0 | `acetylsalicylic acid` | 0.98 | ✓ match |
+| 1 | `Bayer Aspirin` | 0.95 | ✓ match |
+| 2 | `aspirin 100mg tablet` | 0.91 | ✓ match |
+| 3 | `ibuprofen` | 0.03 | ✗ skip |
+| 4 | `naproxen sodium` | 0.02 | ✗ skip |
 
 ### Real cost example
 
