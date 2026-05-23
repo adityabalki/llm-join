@@ -107,8 +107,8 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with c
 | **Finance** | Expense report payee | GL account / vendor master | Reconcile transactions automatically |
 | **Legal / M&A** | Contract party name | Corporate registry | Identify true legal entity |
 | **Compliance** | Customer name | OFAC sanctions list | Sanctions screening at scale |
-| **Pharma** | Generic drug name | Brand name | Generic ↔ brand equivalence |
-| **HR** | Resume job title | Standard taxonomy | Normalize titles for comp analysis |
+| **Pharma** | Generic drug name | Brand name | Generic - brand equivalence |
+| **HR** | Resume job title | Standard taxonomy | Normalize titles  |
 | **E-commerce** | Marketplace listing | Master product catalog | Deduplicate across platforms |
 | **Research** | Author name | Citation database | Disambiguate authors |
 | **Government** | Vendor name | Tax registry | Consolidate procurement spend |
