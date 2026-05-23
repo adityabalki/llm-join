@@ -16,7 +16,7 @@ def fuzzy_join(
     right_on: Union[str, list[str]],
     llm: Callable,
     embed_fn: Callable,
-    context: str = "",
+    context: str,
     column_context: Optional[dict] = None,
     top_k: int = 5,
     threshold: float = 0.7,

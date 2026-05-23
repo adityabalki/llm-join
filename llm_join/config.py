@@ -23,6 +23,11 @@ class ColumnConfig:
             raise ValueError("left_col must not be empty")
         if not self.right_col:
             raise ValueError("right_col must not be empty")
+        if not self.context or not self.context.strip():
+            raise ValueError(
+                "context must not be empty — describe what the columns represent and what kind of match to make. "
+                "Example: \"pharmaceutical drug names — match generic INN names to US brand names\""
+            )
         if not 0.0 < self.threshold <= 1.0:
             raise ValueError(f"threshold must be in (0, 1], got {self.threshold}")
         if self.top_k < 1:

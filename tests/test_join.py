@@ -23,6 +23,7 @@ def mock_embed(texts):
 
 DF1 = pd.DataFrame({"drug": ["aspirin", "ibuprofen"], "dose": [100, 200]})
 DF2 = pd.DataFrame({"brand": ["Bayer Aspirin", "Advil"], "price": [5.0, 8.0]})
+CTX = "pharmaceutical drug names — match generic INN names to US brand names"
 
 def test_basic_join_returns_dataframe():
     result = fuzzy_join(
@@ -30,6 +31,7 @@ def test_basic_join_returns_dataframe():
         left_on="drug", right_on="brand",
         llm=mock_llm,
         embed_fn=mock_embed,
+        context=CTX,
         top_k=2,
     )
     assert isinstance(result, pd.DataFrame)
@@ -40,6 +42,7 @@ def test_inner_join_has_both_columns():
         left_on="drug", right_on="brand",
         llm=mock_llm,
         embed_fn=mock_embed,
+        context=CTX,
         top_k=2,
         how="inner",
     )
@@ -52,6 +55,7 @@ def test_return_reasoning_adds_score_column():
         left_on="drug", right_on="brand",
         llm=mock_llm,
         embed_fn=mock_embed,
+        context=CTX,
         top_k=2,
         return_reasoning=True,
     )
@@ -64,6 +68,7 @@ def test_threshold_low_matches_everything():
         left_on="drug", right_on="brand",
         llm=mock_llm,
         embed_fn=mock_embed,
+        context=CTX,
         top_k=2,
         threshold=0.01,
         how="inner",
@@ -77,6 +82,7 @@ def test_threshold_one_matches_nothing():
         left_on="drug", right_on="brand",
         llm=mock_llm,
         embed_fn=mock_embed,
+        context=CTX,
         top_k=2,
         threshold=1.0,
         how="inner",
@@ -89,6 +95,7 @@ def test_max_llm_calls_warns(recwarn):
         left_on="drug", right_on="brand",
         llm=mock_llm,
         embed_fn=mock_embed,
+        context=CTX,
         top_k=2,
         max_llm_calls=1,  # only 1 allowed, 2 rows -> warn
     )
@@ -104,7 +111,30 @@ def test_multi_col_left_on():
         right_on="brand",
         llm=mock_llm,
         embed_fn=mock_embed,
+        context=CTX,
         top_k=1,
         how="inner",
     )
     assert isinstance(result, pd.DataFrame)
+
+
+def test_missing_context_raises():
+    with pytest.raises(TypeError):
+        fuzzy_join(
+            DF1, DF2,
+            left_on="drug", right_on="brand",
+            llm=mock_llm,
+            embed_fn=mock_embed,
+            # context omitted — should raise TypeError (missing required arg)
+        )
+
+
+def test_empty_context_raises():
+    with pytest.raises(ValueError, match="context must not be empty"):
+        fuzzy_join(
+            DF1, DF2,
+            left_on="drug", right_on="brand",
+            llm=mock_llm,
+            embed_fn=mock_embed,
+            context="   ",  # whitespace-only
+        )

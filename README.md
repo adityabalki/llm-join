@@ -165,18 +165,113 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with c
 
 ## How It Works
 
-```
-df1 (left)                    df2 (right)
-"aspirin"          ──embed──▶  faiss index of right values
-                   ◀──top_k──  ["Bayer Aspirin", "ibuprofen", "acetylsalicylic acid"]
-                   ──llm──▶    score each candidate with context
-                               best match above threshold → join row
+**Example:** Match resume skills to internal team taxonomy.
+
+```python
+resume_df = pd.DataFrame({"skill": [
+    "tableau/power bi developer",
+    "kubernetes cluster admin",
+    "pytorch model training",
+]})
+
+taxonomy_df = pd.DataFrame({"team": [
+    "visualization team",
+    "data engineering",
+    "ml platform",
+    "backend infrastructure",
+    "devops & platform",
+]})
 ```
 
-1. **Embed** both columns using your `embed_fn`
-2. **Retrieve** top-K candidates per row using faiss ANN search
-3. **Score** each candidate with your LLM, with domain context injected into the prompt
-4. **Merge** matched rows — same API as `pd.merge`
+### Step 1 — Embed both columns
+
+Every value is converted to a vector using your `embed_fn`. No API call — runs locally in milliseconds.
+
+| Value | Vector (simplified) |
+|---|---|
+| `"tableau/power bi developer"` | `[0.82, 0.10, 0.04, ...]` |
+| `"kubernetes cluster admin"` | `[0.11, 0.09, 0.78, ...]` |
+| `"pytorch model training"` | `[0.06, 0.88, 0.12, ...]` |
+| `"visualization team"` | `[0.79, 0.08, 0.06, ...]` |
+| `"devops & platform"` | `[0.09, 0.07, 0.81, ...]` |
+| `"ml platform"` | `[0.05, 0.91, 0.09, ...]` |
+
+### Step 2 — FAISS retrieves top-K candidates (no LLM)
+
+For each left row, faiss finds the `top_k` most similar right values by cosine similarity. Everything else is eliminated — no LLM call needed.
+
+**Query: `"tableau/power bi developer"` → top_k=3**
+
+| Rank | Candidate | Embed Score | Reaches LLM? |
+|---:|---|---:|---|
+| 0 | `visualization team` | 0.81 | ✓ yes |
+| 1 | `data engineering` | 0.54 | ✓ yes |
+| 2 | `ml platform` | 0.31 | ✓ yes |
+| — | `backend infrastructure` | 0.18 | ✗ eliminated |
+| — | `devops & platform` | 0.12 | ✗ eliminated |
+
+**Query: `"kubernetes cluster admin"` → top_k=3**
+
+| Rank | Candidate | Embed Score | Reaches LLM? |
+|---:|---|---:|---|
+| 0 | `devops & platform` | 0.87 | ✓ yes |
+| 1 | `backend infrastructure` | 0.72 | ✓ yes |
+| 2 | `data engineering` | 0.38 | ✓ yes |
+| — | `visualization team` | 0.09 | ✗ eliminated |
+| — | `ml platform` | 0.11 | ✗ eliminated |
+
+**Query: `"pytorch model training"` → top_k=3**
+
+| Rank | Candidate | Embed Score | Reaches LLM? |
+|---:|---|---:|---|
+| 0 | `ml platform` | 0.93 | ✓ yes |
+| 1 | `data engineering` | 0.61 | ✓ yes |
+| 2 | `backend infrastructure` | 0.29 | ✓ yes |
+| — | `visualization team` | 0.07 | ✗ eliminated |
+| — | `devops & platform` | 0.21 | ✗ eliminated |
+
+**Result: 3 LLM calls instead of 3 × 5 = 15 pair-by-pair calls.**
+
+### Step 3 — One LLM call per left row scores all candidates
+
+All top-K candidates are batched into a single prompt. The LLM returns a JSON array — one call, all candidates scored.
+
+**Prompt sent for `"tableau/power bi developer"`:**
+```
+Context: resume skills — match to internal team taxonomy
+
+LEFT: "tableau/power bi developer"
+
+Score each candidate (0.0–1.0):
+0. visualization team
+1. data engineering
+2. ml platform
+```
+
+**LLM response:**
+```json
+[
+  {"index": 0, "score": 0.92, "reasoning": "Tableau and Power BI are BI visualization tools. This person belongs on the visualization team."},
+  {"index": 1, "score": 0.31, "reasoning": "BI tools consume data pipelines but the core skill is visualization, not engineering."},
+  {"index": 2, "score": 0.08, "reasoning": "No overlap — ML platform is about model training infrastructure."}
+]
+```
+
+**Apply threshold=0.7:**
+
+| Candidate | LLM Score | Decision |
+|---|---:|---|
+| `visualization team` | 0.92 | ✓ **best match — joined** |
+| `data engineering` | 0.31 | ✗ below threshold |
+| `ml platform` | 0.08 | ✗ below threshold |
+
+### Step 4 — Merge matched rows
+
+| skill | team | _llm_score | _llm_reasoning |
+|---|---|---:|---|
+| tableau/power bi developer | visualization team | 0.92 | Tableau and Power BI are BI visualization tools... |
+| kubernetes cluster admin | devops & platform | 0.89 | Kubernetes administration is core devops/platform work... |
+| pytorch model training | ml platform | 0.95 | PyTorch training is the primary workload of the ML platform team... |
 
 ---
 
@@ -482,7 +577,7 @@ def my_embed(texts):
 | `right_on` | required | Column name(s) in df2 |
 | `llm` | required | Callable `(prompt: str) -> str` — your LLM function |
 | `embed_fn` | required | Callable `(list[str]) -> np.ndarray` — your embedding function |
-| `context` | `""` | Global domain context injected into LLM prompt |
+| `context` | required | Domain context injected into LLM prompt — describe what the columns represent and what kind of match to make |
 | `column_context` | `{}` | Per-column context dict `{"col": "description"}` |
 | `top_k` | `5` | Embedding candidates retrieved per row before LLM scoring |
 | `batch_size` | `32` | Reserved for future LLM batching (passed through to config) |
