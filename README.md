@@ -4,15 +4,21 @@
 
 `pd.merge` joins on exact values. `llm-join` joins on *meaning* — using embeddings to find candidates and an LLM you already have to decide if they match.
 
+```python
+from llm_join import fuzzy_join
+
+result = fuzzy_join(df1, df2, left_on="vendor", right_on="supplier_name", llm=my_llm, embed_fn=my_embed, context="...")
+```
+
 ---
 
 ## Table of Contents
 
 - [The Problem](#the-problem)
-- [Install](#install)
-- [Quick Start](#quick-start)
 - [Why llm-join](#why-llm-join)
 - [Real-World Use Cases](#real-world-use-cases)
+- [Install](#install)
+- [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
 - [Cost & Scale](#cost--scale)
   - [The problem with naive LLM joins](#the-problem-with-naive-llm-joins)
@@ -30,15 +36,9 @@
   - [Chaining multiple joins](#chaining-multiple-joins)
 - [Works with Any LLM](#works-with-any-llm)
 - [Works with Any Embedding Function](#works-with-any-embedding-function)
-- [vs. Alternatives](#vs-alternatives)
+- [Features](#features)
 - [Parameters](#parameters)
 - [License](#license)
-
-```python
-from llm_join import fuzzy_join
-
-result = fuzzy_join(df1, df2, left_on="vendor", right_on="supplier_name", llm=my_llm, embed_fn=my_embed)
-```
 
 ---
 
@@ -56,77 +56,6 @@ You have two DataFrames. Same data, different text:
 `pd.merge` returns nothing. Fuzzy string matching gets the wrong answer. You end up writing custom logic — or doing it by hand.
 
 **llm-join solves this in one line.**
-
----
-
-## Install
-
-```bash
-# From GitHub (not yet on PyPI)
-pip install git+https://github.com/adityabalki/llm-join.git
-
-# Or clone and install locally
-git clone https://github.com/adityabalki/llm-join.git
-cd llm-join
-pip install -e .
-
-# Or copy the wheel to air-gapped machines
-pip install llm_join-0.1.0-py3-none-any.whl
-```
-
----
-
-## Quick Start
-
-```python
-import pandas as pd
-import openai
-from llm_join import fuzzy_join
-
-# Your data
-df1 = pd.DataFrame({
-    "vendor": ["Goldman Sachs & Co.", "Amazon Web Services", "Microsoft Corp"],
-    "spend": [1_200_000, 890_000, 340_000]
-})
-
-df2 = pd.DataFrame({
-    "supplier_name": ["The Goldman Sachs Group Inc", "Amazon.com Inc.", "Microsoft Corporation"],
-    "category": ["Finance", "Cloud", "Software"]
-})
-
-# Wire up any LLM you already use
-client = openai.OpenAI()
-def llm(prompt):
-    return client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
-    ).choices[0].message.content
-
-# Wire up your embedding function
-import numpy as np
-def my_embed(texts):
-    response = client.embeddings.create(model="text-embedding-3-small", input=texts)
-    return np.array([d.embedding for d in response.data], dtype="float32")
-
-# Join (inner by default — only rows that matched)
-result = fuzzy_join(
-    df1, df2,
-    left_on="vendor",
-    right_on="supplier_name",
-    llm=llm,
-    embed_fn=my_embed,
-    context="company names — match legal entity variants and abbreviations",
-    how="inner",   # "inner" | "left" | "right" | "outer"
-)
-
-print(result)
-```
-
-| vendor | spend | supplier_name | category |
-|---|---:|---|---|
-| Goldman Sachs & Co. | 1,200,000 | The Goldman Sachs Group Inc | Finance |
-| Amazon Web Services | 890,000 | Amazon.com Inc. | Cloud |
-| Microsoft Corp | 340,000 | Microsoft Corporation | Software |
 
 ---
 
@@ -150,16 +79,84 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with c
 
 | Domain | Left table | Right table | Problem |
 |--------|-----------|-------------|---------|
-| **Supply chain** | Buyer catalog SKU | Supplier SKU | Match products across 50+ vendor catalogs |
+| **Supply chain** | Buyer product description | Supplier SKU | Match products across 50+ vendor catalogs |
 | **Finance** | Expense report payee | GL account / vendor master | Reconcile transactions automatically |
 | **Legal / M&A** | Contract party name | Corporate registry | Identify true legal entity |
 | **Compliance** | Customer name | OFAC sanctions list | Sanctions screening at scale |
 | **Retail / e-commerce** | Marketplace product listing | Master product catalog | Deduplicate listings across 50+ sellers |
 | **Logistics** | Shipment description | Harmonized tariff code | Auto-classify goods at customs |
-| **E-commerce** | Marketplace listing | Master product catalog | Deduplicate across platforms |
 | **Research** | Author name | Citation database | Disambiguate authors |
 | **Government** | Vendor name | Tax registry | Consolidate procurement spend |
 | **Real estate** | Raw address input | Property records DB | Standardize and match addresses |
+
+---
+
+## Install
+
+```bash
+pip install llm-join
+```
+
+```bash
+# Or install from source
+git clone https://github.com/adityabalki/llm-join.git
+cd llm-join
+pip install -e .
+
+# Or install from wheel (air-gapped machines)
+pip install llm_join-0.2.0-py3-none-any.whl
+```
+
+---
+
+## Quick Start
+
+```python
+import pandas as pd
+import numpy as np
+import openai
+from llm_join import fuzzy_join
+
+df1 = pd.DataFrame({
+    "vendor": ["Goldman Sachs & Co.", "Amazon Web Services", "Microsoft Corp"],
+    "spend": [1_200_000, 890_000, 340_000]
+})
+
+df2 = pd.DataFrame({
+    "supplier_name": ["The Goldman Sachs Group Inc", "Amazon.com Inc.", "Microsoft Corporation"],
+    "category": ["Finance", "Cloud", "Software"]
+})
+
+client = openai.OpenAI()
+
+def my_llm(prompt):
+    return client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    ).choices[0].message.content
+
+def my_embed(texts):
+    response = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return np.array([d.embedding for d in response.data], dtype="float32")
+
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor",
+    right_on="supplier_name",
+    llm=my_llm,
+    embed_fn=my_embed,
+    context="company names — match legal entity variants and abbreviations",
+    how="inner",   # "inner" | "left" | "right" | "outer"
+)
+
+print(result)
+```
+
+| vendor | spend | supplier_name | category |
+|---|---:|---|---|
+| Goldman Sachs & Co. | 1,200,000 | The Goldman Sachs Group Inc | Finance |
+| Amazon Web Services | 890,000 | Amazon.com Inc. | Cloud |
+| Microsoft Corp | 340,000 | Microsoft Corporation | Software |
 
 ---
 
@@ -315,7 +312,7 @@ Convert every value to a vector. Use faiss to find the top-K most similar candid
 
 ### Stage 2: LLM scores only the hard cases (accurate)
 
-Your LLM sees a small batch of plausible candidates per row — not the full cross product. It scores each candidate; the highest score above `threshold` wins. One best match per left row.
+Your LLM sees a small batch of plausible candidates per row — not the full cross product. It scores each candidate; the highest score above `threshold` wins.
 
 Query: `"USB-C charging cable 2m black"`
 
@@ -343,6 +340,7 @@ result = fuzzy_join(
     left_on="vendor", right_on="supplier",
     llm=my_llm,
     embed_fn=my_embed,
+    context="...",
     top_k=3,                # fewer candidates = fewer LLM tokens per row
     embed_threshold=0.95,   # skip LLM entirely if embedding match score > 0.95
     max_llm_calls=1000,     # hard cap — warns and returns partial result if hit
@@ -398,6 +396,7 @@ result = fuzzy_join(
     right_on="supplier_name",
     llm=my_llm,
     embed_fn=my_embed,
+    context="company names — match legal entity variants",
     return_reasoning=True,
 )
 
@@ -417,6 +416,7 @@ result = fuzzy_join(
     right_on="supplier_name",
     llm=my_llm,
     embed_fn=my_embed,
+    context="company names — match legal entity variants",
     embed_threshold=0.95,   # skip LLM if embedding match is obvious
     max_llm_calls=500,      # hard cap — warns and returns partial result if hit
     top_k=3,                # fewer candidates = fewer LLM tokens
@@ -425,26 +425,31 @@ result = fuzzy_join(
 
 ### Left join (audit unmatched rows)
 
-`how="left"` keeps all left rows — unmatched ones get NaN right columns. Useful to see what the LLM failed to match.
+`how="left"` keeps all left rows — unmatched ones get NaN right columns. Useful to see what failed to match.
 
 ```python
-result = fuzzy_join(df1, df2, left_on="a", right_on="b", llm=my_llm, embed_fn=my_embed, how="left")
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor", right_on="supplier_name",
+    llm=my_llm, embed_fn=my_embed,
+    context="company names — match legal entity variants",
+    how="left",
+)
 
-# Rows with no match
-unmatched = result[result["b"].isna()]
+unmatched = result[result["supplier_name"].isna()]
 ```
 
-> **Note:** `how="outer"` is useful for reconciliation — unmatched left rows are left values with no match above threshold; unmatched right rows are right values that were never selected as a best match for any left row. `cross` join is not supported (it would be the naive O(n×m) approach that llm-join is designed to avoid).
+> **Note:** `how="outer"` is useful for reconciliation — unmatched left rows are values with no match above threshold; unmatched right rows are values never selected as a best match. `cross` join is not supported (it would be the naive O(n×m) approach llm-join is designed to avoid).
 
 ### Multi-column join key
 
 ```python
 # orders_df has separate "product_name" and "category" columns
-# catalog_df has a single "sku_description" column like "CABLE / USB-C / 200CM / BLK"
+# catalog_df has a single "sku_description" column
 
 result = fuzzy_join(
     orders_df, catalog_df,
-    left_on=["product_name", "category"],   # concatenated: "USB-C cable 2m · electronics"
+    left_on=["product_name", "category"],   # concatenated into one key
     right_on="sku_description",
     llm=my_llm,
     embed_fn=my_embed,
@@ -457,22 +462,16 @@ result = fuzzy_join(
 Each `fuzzy_join` returns a regular DataFrame — pipe them like `pd.merge`.
 
 ```python
-# df1: transactions  (vendor + product columns)
-# df2: vendor master
-# df3: product catalog
-
 # Step 1 — match vendors
 step1 = fuzzy_join(
     df1, df2,
-    left_on="vendor",
-    right_on="supplier_name",
-    llm=my_llm,
-    embed_fn=my_embed,
-    how="left",
-    return_reasoning=True,
+    left_on="vendor", right_on="supplier_name",
+    llm=my_llm, embed_fn=my_embed,
+    context="company names — match legal entity variants",
+    how="left", return_reasoning=True,
 )
 step1 = step1.rename(columns={
-    "_llm_score":    "_vendor_score",
+    "_llm_score": "_vendor_score",
     "_llm_reasoning": "_vendor_reasoning",
     "_match_method": "_vendor_method",
 })
@@ -480,14 +479,11 @@ step1 = step1.rename(columns={
 # Step 2 — match products on result of step 1
 result = fuzzy_join(
     step1, df3,
-    left_on="product",
-    right_on="catalog_item",
-    llm=my_llm,
-    embed_fn=my_embed,
-    how="left",
-    return_reasoning=True,
+    left_on="product", right_on="catalog_item",
+    llm=my_llm, embed_fn=my_embed,
+    context="product names — match internal descriptions to catalog items",
+    how="left", return_reasoning=True,
 )
-# result now has _vendor_score + _llm_score without column collision
 ```
 
 ---
@@ -509,7 +505,7 @@ llm = lambda p: client.chat.completions.create(
 import anthropic
 client = anthropic.Anthropic()
 llm = lambda p: client.messages.create(
-    model="claude-opus-4-7", max_tokens=512,
+    model="claude-opus-4-5", max_tokens=512,
     messages=[{"role": "user", "content": p}]
 ).content[0].text
 
@@ -532,6 +528,8 @@ llm = lambda p: requests.post(
 ).json()["response"]
 ```
 
+---
+
 ## Works with Any Embedding Function
 
 Pass any callable `(list[str]) -> np.ndarray` (shape `[n, dim]`, dtype `float32`).
@@ -539,7 +537,7 @@ Pass any callable `(list[str]) -> np.ndarray` (shape `[n, dim]`, dtype `float32`
 ```python
 import numpy as np
 
-# OpenAI embeddings
+# OpenAI
 import openai
 client = openai.OpenAI()
 def my_embed(texts):
@@ -553,7 +551,7 @@ def my_embed(texts):
     response = co.embed(texts=texts, model="embed-english-v3.0", input_type="search_document")
     return np.array(response.embeddings, dtype="float32")
 
-# sentence-transformers (local)
+# sentence-transformers (local, no API key)
 from sentence_transformers import SentenceTransformer
 model = SentenceTransformer("all-MiniLM-L6-v2")
 def my_embed(texts):
@@ -571,20 +569,22 @@ def my_embed(texts):
 
 ---
 
-## vs. Alternatives
+## Features
 
-| | llm-join | pd.merge | fuzzywuzzy | Jellyjoin | LinkTransformer |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Semantic matching | ✓ | ✗ | ✗ | ✓ | ✓ |
-| LLM makes final decision | ✓ | ✗ | ✗ | ✗ | optional |
-| Reasoning per match | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Domain context injection | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Bring-your-own LLM callable | ✓ | n/a | n/a | ✗ | ✗ |
-| Bring-your-own embed callable | ✓ | n/a | n/a | ✗ | ✗ |
-| Enterprise-safe (no forced downloads) | ✓ | ✓ | ✓ | partial | ✗ |
-| Hard cost cap (`max_llm_calls`) | ✓ | n/a | n/a | ✗ | ✗ |
-| License | **MIT** | BSD | MIT | MIT | **GPL-3.0** |
-| Install size | ~50 MB | ~20 MB | ~30 MB | ~60 MB | **~3 GB** |
+- **Semantic matching** — joins on meaning, not character similarity
+- **Two-stage pipeline** — embeddings eliminate 99%+ of candidates cheaply; LLM scores only the hard cases
+- **Domain context injection** — `context` and `column_context` tell the LLM what the columns represent, improving accuracy
+- **Bring-your-own LLM** — any callable `(str) -> str`; works with OpenAI, Anthropic, Gemini, Ollama, or any custom endpoint
+- **Bring-your-own embeddings** — any callable `(list[str]) -> np.ndarray`; works with any embedding model or API
+- **Full join semantics** — `inner`, `left`, `right`, `outer` — same API as `pd.merge`
+- **Multi-column join keys** — pass a list to `left_on` / `right_on`; values are concatenated automatically
+- **Tie handling** — when multiple candidates score equally, all are returned (correct join semantics)
+- **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` columns
+- **Embed threshold shortcut** — `embed_threshold` skips LLM entirely for obvious matches, saving cost
+- **Embed fallback** — if LLM fails all retries, falls back to top embed candidate automatically (`_match_method="embed_fallback"`)
+- **Cost controls** — `top_k`, `embed_threshold`, `max_llm_calls` give full budget control
+- **Retry with backoff** — `max_retries` retries failed LLM calls with exponential backoff (1s, 2s, 4s…)
+- **MIT license** — use in commercial projects without restriction
 
 ---
 
@@ -592,20 +592,20 @@ def my_embed(texts):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `left_on` | required | Column name(s) in df1 |
-| `right_on` | required | Column name(s) in df2 |
+| `left_on` | required | Column name(s) in df1. Pass a list for multi-column keys. |
+| `right_on` | required | Column name(s) in df2. Pass a list for multi-column keys. |
 | `llm` | required | Callable `(prompt: str) -> str` — your LLM function |
 | `embed_fn` | required | Callable `(list[str]) -> np.ndarray` — your embedding function |
 | `context` | required | Domain context injected into LLM prompt — describe what the columns represent and what kind of match to make |
-| `column_context` | `{}` | Per-column context dict `{"col": "description"}` |
-| `top_k` | `5` | Embedding candidates retrieved per row before LLM scoring |
-| `batch_size` | `32` | Reserved for future LLM batching (passed through to config) |
-| `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match |
-| `how` | `"inner"` | Join type: `inner` (matched pairs only) / `left` (all left rows, NaN where unmatched) / `right` (all right rows, NaN where no left row matched them) / `outer` (full picture — both unmatched left and unmatched right rows). |
-| `embed_threshold` | `None` | Skip LLM when embedding score is decisive (saves cost) |
-| `max_llm_calls` | `None` | Hard cap on LLM calls — returns partial result with warning if hit |
-| `max_retries` | `3` | Retry failed LLM calls with exponential backoff (1s, 2s, 4s…). Set `0` to disable. |
-| `return_reasoning` | `False` | Append `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` columns. `_match_method` is `"llm"` or `"embed_threshold"` — tells you which rows skipped the LLM. |
+| `column_context` | `{}` | Per-column context dict `{"col": "description"}` — adds column-level detail to the prompt |
+| `top_k` | `5` | Number of embedding candidates retrieved per left row before LLM scoring |
+| `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. Scores below this are rejected. |
+| `how` | `"inner"` | Join type: `inner` (matched pairs only) / `left` (all left rows) / `right` (all right rows) / `outer` (all rows both sides) |
+| `embed_threshold` | `None` | If set, skip LLM when top embed score ≥ this value — match accepted as-is |
+| `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns partial result if hit. |
+| `max_retries` | `3` | Retry failed LLM calls with exponential backoff (1s, 2s, 4s…). Set `0` to disable. On full failure, falls back to top embed candidate. |
+| `batch_size` | `32` | Embedding batch size for `embed_fn` calls |
+| `return_reasoning` | `False` | Append debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` (`"llm"` / `"embed_threshold"` / `"embed_fallback"`) |
 
 ---
 
