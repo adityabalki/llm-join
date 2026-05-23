@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import warnings
 import pandas as pd
 
 
@@ -25,6 +26,14 @@ class Merger:
     ) -> pd.DataFrame:
         if how not in ("inner", "left", "right", "outer"):
             raise ValueError(f"how must be inner/left/right/outer, got '{how}'")
+        if how in ("right", "outer"):
+            warnings.warn(
+                f"how='{how}' with fuzzy_join is left-driven: llm-join only searches right candidates "
+                "for each left row, never the reverse. Unmatched right rows will appear with NaN left "
+                "columns but were never evaluated as queries. Use how='left' to audit unmatched left rows.",
+                UserWarning,
+                stacklevel=3,
+            )
         if right_col in df1.columns and right_col != left_col:
             raise ValueError(
                 f"right_col '{right_col}' already exists in df1; rename before merging"
