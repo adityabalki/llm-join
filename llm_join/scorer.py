@@ -118,12 +118,16 @@ class LLMScorer:
             warnings.warn(f"LLM returned non-array JSON for '{left_val}': {raw!r}")
             return []
 
-        # Collect all valid scored items above threshold
+        # Collect all valid scored items above threshold, deduplicated by index
+        seen_indices: set[int] = set()
         scored = []
         for item in parsed:
             idx = item.get("index", -1)
             if not (0 <= idx < len(candidates)):
                 continue
+            if idx in seen_indices:
+                continue  # LLM returned duplicate index — skip
+            seen_indices.add(idx)
             score = float(item.get("score", 0.0))
             if score >= threshold:
                 scored.append((score, idx, item.get("reasoning", "")))
@@ -133,14 +137,21 @@ class LLMScorer:
 
         # Find best score, return ALL candidates that tie at that score
         best_score = max(s for s, _, _ in scored)
-        results = []
-        for score, idx, reasoning in scored:
-            if score == best_score:
-                results.append(MatchResult(
-                    left_val=left_val,
-                    right_val=candidates[idx],
-                    score=score,
-                    reasoning=reasoning,
-                    embed_rank=idx,
-                ))
-        return results
+        tied = [(idx, reasoning) for score, idx, reasoning in scored if score == best_score]
+
+        # Annotate reasoning when multiple candidates tie — visible in return_reasoning output
+        tie_note = (
+            f" [tied: {len(tied)} candidates scored {best_score} — all joined]"
+            if len(tied) > 1 else ""
+        )
+
+        return [
+            MatchResult(
+                left_val=left_val,
+                right_val=candidates[idx],
+                score=best_score,
+                reasoning=reasoning + tie_note,
+                embed_rank=idx,
+            )
+            for idx, reasoning in tied
+        ]
