@@ -140,3 +140,25 @@ def test_empty_context_raises():
             embed_fn=mock_embed,
             context="   ",  # whitespace-only
         )
+
+
+def test_embed_fallback_on_llm_failure():
+    # LLM that always raises — should trigger embed rank-0 fallback for every row
+    def failing_llm(prompt: str) -> str:
+        raise RuntimeError("LLM API down")
+
+    result = fuzzy_join(
+        DF1, DF2,
+        left_on="drug", right_on="brand",
+        llm=failing_llm,
+        embed_fn=mock_embed,
+        context=CTX,
+        top_k=2,
+        max_retries=0,  # no retries — fail immediately
+        return_reasoning=True,
+    )
+    # Both rows should still be in result via embed fallback
+    assert len(result) == 2
+    assert (_result := result["_match_method"] == "embed_fallback").all(), \
+        f"Expected all embed_fallback, got: {result['_match_method'].tolist()}"
+    assert result["_llm_reasoning"].str.contains("embed rank-0 fallback").all()

@@ -96,7 +96,18 @@ def fuzzy_join(
         candidates = [c for c, _ in candidates_with_scores]
         results = scorer.score(left_val, candidates, cfg.context_str, threshold=cfg.threshold)
         llm_call_count += 1
-        if results:
+        if results is None:
+            # LLM failed all retries — fall back to highest-scoring embed candidate
+            best_candidate, best_embed_score = candidates_with_scores[0]
+            matches.append(MatchResult(
+                left_val=left_val,
+                right_val=best_candidate,
+                score=best_embed_score,
+                reasoning="LLM failed — embed rank-0 fallback used",
+                embed_rank=0,
+                match_method="embed_fallback",
+            ))
+        elif results:
             matches.extend(results)
 
     return merger.merge(df1, df2, left_col, right_col, matches, how=how, return_reasoning=return_reasoning)

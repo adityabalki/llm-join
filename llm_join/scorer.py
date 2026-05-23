@@ -21,7 +21,7 @@ class LLMScorer:
         candidates: list[str],
         context_str: str,
         threshold: float = 0.7,
-    ) -> list[MatchResult]:
+    ) -> Optional[list[MatchResult]]:
         if self._is_async:
             raise TypeError(
                 "LLM is async; call score_async() instead, or pass a sync callable."
@@ -44,11 +44,12 @@ class LLMScorer:
                     )
                     time.sleep(wait)
         warnings.warn(
-            f"LLM call failed for '{left_val}' after {self._max_retries + 1} attempts: {last_exc!r}. Skipping row.",
+            f"LLM call failed for '{left_val}' after {self._max_retries + 1} attempts: {last_exc!r}. "
+            "Falling back to top embed candidate.",
             UserWarning,
             stacklevel=2,
         )
-        return []
+        return None  # signals LLM failure — caller applies embed fallback
 
     async def score_async(
         self,
@@ -56,7 +57,7 @@ class LLMScorer:
         candidates: list[str],
         context_str: str,
         threshold: float = 0.7,
-    ) -> list[MatchResult]:
+    ) -> Optional[list[MatchResult]]:
         prompt = build_prompt(left_val, candidates, context_str)
         last_exc: Optional[Exception] = None
         for attempt in range(self._max_retries + 1):
@@ -78,11 +79,12 @@ class LLMScorer:
                     )
                     await asyncio.sleep(wait)
         warnings.warn(
-            f"LLM call failed for '{left_val}' after {self._max_retries + 1} attempts: {last_exc!r}. Skipping row.",
+            f"LLM call failed for '{left_val}' after {self._max_retries + 1} attempts: {last_exc!r}. "
+            "Falling back to top embed candidate.",
             UserWarning,
             stacklevel=2,
         )
-        return []
+        return None  # signals LLM failure — caller applies embed fallback
 
     def _parse(
         self,
