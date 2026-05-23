@@ -50,7 +50,9 @@ def test_return_reasoning_adds_columns():
     assert "_llm_score" in result.columns
     assert "_llm_reasoning" in result.columns
     assert "_embed_rank" in result.columns
+    assert "_match_method" in result.columns
     assert result.iloc[0]["_llm_score"] == 0.95
+    assert result.iloc[0]["_match_method"] == "llm"
 
 
 def test_no_matches_returns_empty_inner():

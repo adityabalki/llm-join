@@ -69,8 +69,9 @@ def fuzzy_join(
                     left_val=left_val,
                     right_val=best_candidate,
                     score=best_score,
-                    reasoning="embed_threshold match",
+                    reasoning="skipped — embed score above threshold",
                     embed_rank=0,
+                    match_method="embed_threshold",
                 ))
                 continue
             if best_score < (1.0 - cfg.embed_threshold):

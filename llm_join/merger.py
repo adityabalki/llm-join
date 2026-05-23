@@ -9,6 +9,7 @@ class MatchResult:
     score: float
     reasoning: str
     embed_rank: int = 0
+    match_method: str = "llm"  # "llm" or "embed_threshold"
 
 
 class Merger:
@@ -48,12 +49,16 @@ class Merger:
             "_llm_score": [m.score for m in matches],
             "_llm_reasoning": [m.reasoning for m in matches],
             "_embed_rank": [m.embed_rank for m in matches],
+            "_match_method": [m.match_method for m in matches],
         })
 
         df2_with_key = df2.merge(match_df, on=right_col, how="right")
         result = df1.merge(df2_with_key, left_on=left_col, right_on=left_col, how=how)
 
         if not return_reasoning:
-            result = result.drop(columns=["_llm_score", "_llm_reasoning", "_embed_rank"], errors="ignore")
+            result = result.drop(
+                columns=["_llm_score", "_llm_reasoning", "_embed_rank", "_match_method"],
+                errors="ignore",
+            )
 
         return result.reset_index(drop=True)
