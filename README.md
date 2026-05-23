@@ -294,7 +294,7 @@ result = fuzzy_join(df1, df2, left_on="a", right_on="b", llm=my_llm, embed_fn=my
 unmatched = result[result["b"].isna()]
 ```
 
-> **Note:** `how="right"` and `how="outer"` are supported but emit a warning. llm-join is left-driven — it only searches right candidates for each left row, never the reverse. Unmatched right rows appear with NaN left columns but were never evaluated as queries.
+> **Note:** `how="outer"` is useful for reconciliation — unmatched left rows are left values with no match above threshold; unmatched right rows are right values that were never selected as a best match for any left row. `cross` join is not supported (it would be the naive O(n×m) approach that llm-join is designed to avoid).
 
 ### Multi-column join key
 
@@ -457,7 +457,7 @@ def my_embed(texts):
 | `top_k` | `5` | Embedding candidates retrieved per row before LLM scoring |
 | `batch_size` | `32` | Reserved for future LLM batching (passed through to config) |
 | `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match |
-| `how` | `"inner"` | Join type: `inner` (matched pairs only) / `left` (all left rows, NaN where unmatched). `right` and `outer` are supported but emit a warning — llm-join is left-driven so unmatched right rows were never evaluated as queries. |
+| `how` | `"inner"` | Join type: `inner` (matched pairs only) / `left` (all left rows, NaN where unmatched) / `right` (all right rows, NaN where no left row matched them) / `outer` (full picture — both unmatched left and unmatched right rows). |
 | `embed_threshold` | `None` | Skip LLM when embedding score is decisive (saves cost) |
 | `max_llm_calls` | `None` | Hard cap on LLM calls — returns partial result with warning if hit |
 | `max_retries` | `3` | Retry failed LLM calls with exponential backoff (1s, 2s, 4s…). Set `0` to disable. |
