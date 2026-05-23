@@ -2,7 +2,7 @@
 
 **The pandas join that understands what your data means.**
 
-`pd.merge` joins on exact values. `llm-join` joins on *meaning* — embeddings find candidates, your LLM decides if they match.
+`pd.merge` joins on exact values. `llm-join` joins on *meaning* — using embeddings to find candidates and an LLM you already have to decide if they match.
 
 ```python
 from llm_join import fuzzy_join
@@ -85,28 +85,71 @@ print(result)
 
 ## Why llm-join
 
-| Tool | Matching method | Semantic understanding | Reasoning output | Bring your own model |
-|------|----------------|----------------------|-----------------|---------------------|
-| `pd.merge` | Exact string match | ✗ | ✗ | n/a |
-| `fuzzywuzzy` / `rapidfuzz` | Character similarity | ✗ | ✗ | n/a |
-| Embedding similarity alone | Vector cosine distance | ✓ | ✗ | partial |
-| **llm-join** | **Embeddings + LLM decision** | **✓** | **✓** | **✓** |
+### vs. `pd.merge`
+Exact string match only. Fails on any variation in naming.
 
-`"aspirin"` vs `"acetylsalicylic acid"` — fuzzywuzzy scores this low. llm-join scores it 0.98. The LLM knows they're the same drug.
+### vs. fuzzy string matching (`fuzzywuzzy`, `rapidfuzz`)
+Character similarity, not semantic meaning. `"Apple Inc"` vs `"Apple Incorporated"` scores high. `"aspirin"` vs `"acetylsalicylic acid"` scores low — even though they are the same drug.
+
+### vs. embedding similarity alone
+Fast and cheap, but no reasoning. Can't explain *why* two values match or catch false positives confidently.
+
+### llm-join
+Embeddings narrow down candidates (fast, cheap). LLM makes the final call with context (accurate). You get the best of both.
+
+---
+
+## Real-World Use Cases
+
+| Domain | Left table | Right table | Problem |
+|--------|-----------|-------------|---------|
+| **Supply chain** | Buyer catalog SKU | Supplier SKU | Match products across 50+ vendor catalogs |
+| **Finance** | Expense report payee | GL account / vendor master | Reconcile transactions automatically |
+| **Legal / M&A** | Contract party name | Corporate registry | Identify true legal entity |
+| **Compliance** | Customer name | OFAC sanctions list | Sanctions screening at scale |
+| **Pharma** | Generic drug name | Brand name | Generic ↔ brand equivalence |
+| **HR** | Resume job title | Standard taxonomy | Normalize titles for comp analysis |
+| **E-commerce** | Marketplace listing | Master product catalog | Deduplicate across platforms |
+| **Research** | Author name | Citation database | Disambiguate authors |
+| **Government** | Vendor name | Tax registry | Consolidate procurement spend |
+| **Real estate** | Raw address input | Property records DB | Standardize and match addresses |
 
 ---
 
 ## How It Works
 
-llm-join uses a **two-stage pipeline** — embeddings eliminate 99.99% of pairs for free, the LLM only sees plausible candidates.
+```
+df1 (left)                    df2 (right)
+"aspirin"          ──embed──▶  faiss index of right values
+                   ◀──top_k──  ["Bayer Aspirin", "ibuprofen", "acetylsalicylic acid"]
+                   ──llm──▶    score each candidate with context
+                               best match above threshold → join row
+```
 
-### Stage 1 — Embed & Retrieve (cheap, milliseconds)
+1. **Embed** both columns using your `embed_fn`
+2. **Retrieve** top-K candidates per row using faiss ANN search
+3. **Score** each candidate with your LLM, with domain context injected into the prompt
+4. **Merge** matched rows — same API as `pd.merge`
 
-| Step | What happens | Cost |
-|------|-------------|------|
-| Embed left column | Convert all left values to vectors via your `embed_fn` | your embed API |
-| Embed right column | Convert all right values to vectors (once, cached) | your embed API |
-| FAISS search | For each left row, find top-K nearest right rows by cosine similarity | free — pure math |
+---
+
+## Cost & Scale
+
+### The problem with naive LLM joins
+
+If you sent every possible pair to the LLM:
+
+| Left rows | Right rows | Pairs to score | Cost (gpt-4o-mini ~$0.30/1M tokens) |
+|-----------|------------|----------------|--------------------------------------|
+| 1,000 | 10,000 | 10,000,000 | ~$150 |
+| 10,000 | 100,000 | 1,000,000,000 | ~$15,000 |
+| 100,000 | 1,000,000 | 100,000,000,000 | impossible |
+
+**llm-join solves this with a two-stage pipeline.**
+
+### Stage 1: Embeddings narrow the search (cheap)
+
+Convert every value to a vector. Use faiss to find the top-K most similar candidates per row. This is pure math — no API calls, runs in milliseconds.
 
 ```
 10,000 left rows × 100,000 right rows = 1,000,000,000 possible pairs
@@ -115,49 +158,28 @@ llm-join uses a **two-stage pipeline** — embeddings eliminate 99.99% of pairs 
                                         99.995% of pairs eliminated for free
 ```
 
-### Stage 2 — LLM Scores the Candidates (accurate, reasoned)
+### Stage 2: LLM scores only the hard cases (accurate)
 
-Your LLM sees a small batch of plausible candidates per row — not the full cross product.
+Your LLM sees a small batch of plausible candidates per row — not the full cross product. It decides the final match with full semantic reasoning.
 
 ```
-Query: "aspirin"
-
-Candidate              | Embed rank | LLM score | Decision
------------------------|------------|-----------|----------
-acetylsalicylic acid   |     1      |   0.98    | ✓ match
-Bayer Aspirin Tablet   |     2      |   0.95    | ✓ match
-aspirin 100mg tablet   |     3      |   0.91    | ✓ match
-ibuprofen              |     4      |   0.03    | ✗ skip
-naproxen sodium        |     5      |   0.02    | ✗ skip
+"aspirin" candidates after embedding:
+  0. "Bayer Aspirin"        → LLM score: 0.95 ✓ match
+  1. "acetylsalicylic acid" → LLM score: 0.98 ✓ match (even better)
+  2. "aspirin 100mg tablet" → LLM score: 0.91 ✓ match
+  3. "ibuprofen"            → LLM score: 0.03 ✗ skip
+  4. "naproxen sodium"      → LLM score: 0.02 ✗ skip
 ```
 
----
+### Real cost example
 
-## Cost & Scale
+| Setup | LLM calls | Estimated cost |
+|-------|-----------|----------------|
+| 10k × 100k, top_k=5 | 50,000 | ~$0.75 |
+| 10k × 100k, top_k=3 | 30,000 | ~$0.45 |
+| 10k × 100k, embed_threshold=0.95 | ~5,000 (obvious matches skip LLM) | ~$0.08 |
 
-### Naive approach: every pair to the LLM
-
-| Left rows | Right rows | Pairs to score | Cost (gpt-4o-mini ~$0.30/1M tokens) |
-|----------:|----------:|--------------:|------------------------------------:|
-| 1,000 | 10,000 | 10,000,000 | ~$150 |
-| 10,000 | 100,000 | 1,000,000,000 | ~$15,000 |
-| 100,000 | 1,000,000 | 100,000,000,000 | impossible |
-
-### llm-join two-stage pipeline
-
-| Setup | LLM calls | Estimated cost | vs. naive |
-|-------|----------:|---------------:|----------:|
-| 10k × 100k, `top_k=5` | 50,000 | ~$0.75 | **−99.995%** |
-| 10k × 100k, `top_k=3` | 30,000 | ~$0.45 | **−99.997%** |
-| 10k × 100k, `embed_threshold=0.95` | ~5,000 | ~$0.08 | **−99.9995%** |
-
-### Cost control parameters
-
-| Parameter | Default | Effect |
-|-----------|--------:|--------|
-| `top_k=3` | 5 | 40% fewer LLM tokens per join |
-| `embed_threshold=0.95` | None | Skip LLM for obvious matches — saves 30–60% typically |
-| `max_llm_calls=N` | None | Hard budget cap — warns and returns partial result if hit |
+### Further cost controls
 
 ```python
 result = fuzzy_join(
@@ -171,22 +193,11 @@ result = fuzzy_join(
 )
 ```
 
----
-
-## Real-World Use Cases
-
-| Domain | Left table | Right table | Problem solved |
-|--------|-----------|-------------|----------------|
-| **Supply chain** | Buyer catalog SKU | Supplier SKU | Match products across 50+ vendor catalogs |
-| **Finance** | Expense report payee | GL account / vendor master | Reconcile transactions automatically |
-| **Legal / M&A** | Contract party name | Corporate registry | Identify true legal entity |
-| **Compliance** | Customer name | OFAC sanctions list | Sanctions screening at scale |
-| **Pharma** | Generic drug name | Brand name | Generic ↔ brand equivalence |
-| **HR** | Resume job title | Standard taxonomy | Normalize titles for comp analysis |
-| **E-commerce** | Marketplace listing | Master product catalog | Deduplicate across platforms |
-| **Research** | Author name | Citation database | Disambiguate authors |
-| **Government** | Vendor name | Tax registry | Consolidate procurement spend |
-| **Real estate** | Raw address input | Property records DB | Standardize and match addresses |
+| Parameter | Effect |
+|-----------|--------|
+| `top_k=3` (default 5) | 40% fewer LLM tokens |
+| `embed_threshold=0.95` | Skip LLM for obvious matches — typically saves 30–60% |
+| `max_llm_calls=N` | Budget guard — never exceeds N LLM calls |
 
 ---
 
@@ -240,6 +251,20 @@ print(result[["vendor", "supplier_name", "_llm_score", "_llm_reasoning"]])
 |---|---|---:|---|
 | Goldman Sachs & Co. | The Goldman Sachs Group Inc | 0.97 | same firm, legal name variant |
 
+### Control cost
+
+```python
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor",
+    right_on="supplier_name",
+    llm=my_llm,
+    embed_threshold=0.95,   # skip LLM if embedding match is obvious
+    max_llm_calls=500,      # hard cap — warns and returns partial result if hit
+    top_k=3,                # fewer candidates = fewer LLM tokens
+)
+```
+
 ### Left join (keep unmatched rows)
 
 ```python
@@ -262,7 +287,7 @@ result = fuzzy_join(
 
 ## Works with Any LLM
 
-Pass any callable `(prompt: str) -> str`. No provider lock-in.
+Pass any callable that takes a prompt string and returns a string.
 
 ```python
 # OpenAI
@@ -300,8 +325,6 @@ llm = lambda p: requests.post(
 ).json()["response"]
 ```
 
-Same pattern for `embed_fn` — pass any callable `(list[str]) -> np.ndarray`. Works with OpenAI embeddings, Cohere, local models, or any custom endpoint.
-
 ---
 
 ## vs. Alternatives
@@ -318,11 +341,6 @@ Same pattern for `embed_fn` — pass any callable `(list[str]) -> np.ndarray`. W
 | Hard cost cap (`max_llm_calls`) | ✓ | n/a | n/a | ✗ | ✗ |
 | License | **MIT** | BSD | MIT | MIT | **GPL-3.0** |
 | Install size | ~50 MB | ~20 MB | ~30 MB | ~60 MB | **~3 GB** |
-| String distance fallback | ✗ | ✗ | ✓ | ✓ | ✗ |
-| Dedup / clustering | ✗ | ✗ | ✗ | ✗ | ✓ |
-
-> **GPL-3.0** (LinkTransformer) restricts use in closed-source products.  
-> **~3 GB** install (LinkTransformer) = torch + transformers + sentence-transformers + wandb + full HuggingFace stack.
 
 ---
 
