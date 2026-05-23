@@ -9,3 +9,5 @@ dist/
 *.whl
 .pytest_cache/
 .claude/
+docs/
+tests/
