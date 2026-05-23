@@ -359,6 +359,7 @@ llm = lambda p: requests.post(
 | `how` | `"inner"` | Join type: `inner` / `left` / `right` / `outer` |
 | `embed_threshold` | `None` | Skip LLM when embedding score is decisive (saves cost) |
 | `max_llm_calls` | `None` | Hard cap on LLM calls — returns partial result with warning if hit |
+| `max_retries` | `3` | Retry failed LLM calls with exponential backoff (1s, 2s, 4s…). Set `0` to disable. |
 | `return_reasoning` | `False` | Append `_llm_score`, `_llm_reasoning`, `_embed_rank` columns |
 
 ---

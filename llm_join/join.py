@@ -24,6 +24,7 @@ def fuzzy_join(
     batch_size: int = 32,
     embed_threshold: Optional[float] = None,
     max_llm_calls: Optional[int] = None,
+    max_retries: int = 3,
     return_reasoning: bool = False,
 ) -> pd.DataFrame:
     # Normalise column names to single string (multi-col join concatenates values)
@@ -40,10 +41,11 @@ def fuzzy_join(
         batch_size=batch_size,
         embed_threshold=embed_threshold,
         max_llm_calls=max_llm_calls,
+        max_retries=max_retries,
     )
 
     retriever = EmbeddingRetriever(embed_fn=cfg.embed_fn)
-    scorer = LLMScorer(llm)
+    scorer = LLMScorer(llm, max_retries=cfg.max_retries)
     merger = Merger()
 
     left_vals = df1[left_col].astype(str).tolist()

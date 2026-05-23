@@ -16,6 +16,7 @@ class ColumnConfig:
     batch_size: int = 32
     embed_threshold: Optional[float] = None
     max_llm_calls: Optional[int] = None
+    max_retries: int = 3
 
     def __post_init__(self):
         if not self.left_col:
@@ -32,6 +33,8 @@ class ColumnConfig:
             raise ValueError(f"embed_threshold must be in (0, 1], got {self.embed_threshold}")
         if self.max_llm_calls is not None and self.max_llm_calls < 1:
             raise ValueError(f"max_llm_calls must be >= 1, got {self.max_llm_calls}")
+        if self.max_retries < 0:
+            raise ValueError(f"max_retries must be >= 0, got {self.max_retries}")
 
     @property
     def context_str(self) -> str:
