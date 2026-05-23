@@ -37,9 +37,9 @@ class Merger:
             if how == "inner":
                 return empty
             if how == "left":
-                return df1.copy()
+                return pd.merge(df1, df2.iloc[:0], left_on=left_col, right_on=right_col, how="left")
             if how == "right":
-                return df2.copy()
+                return pd.merge(df1.iloc[:0], df2, left_on=left_col, right_on=right_col, how="right")
             # outer: return both frames with NaN fills
             return pd.merge(df1, df2, left_on=left_col, right_on=right_col, how="outer")
 
@@ -52,7 +52,7 @@ class Merger:
             "_match_method": [m.match_method for m in matches],
         })
 
-        df2_with_key = df2.merge(match_df, on=right_col, how="right")
+        df2_with_key = df2.merge(match_df, on=right_col, how="left")
         result = df1.merge(df2_with_key, left_on=left_col, right_on=left_col, how=how)
 
         if not return_reasoning:
