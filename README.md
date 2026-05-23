@@ -4,6 +4,36 @@
 
 `pd.merge` joins on exact values. `llm-join` joins on *meaning* — using embeddings to find candidates and an LLM you already have to decide if they match.
 
+---
+
+## Table of Contents
+
+- [The Problem](#the-problem)
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [Why llm-join](#why-llm-join)
+- [Real-World Use Cases](#real-world-use-cases)
+- [How It Works](#how-it-works)
+- [Cost & Scale](#cost--scale)
+  - [The problem with naive LLM joins](#the-problem-with-naive-llm-joins)
+  - [Stage 1: Embeddings narrow the search](#stage-1-embeddings-narrow-the-search-cheap)
+  - [Stage 2: LLM scores only the hard cases](#stage-2-llm-scores-only-the-hard-cases-accurate)
+  - [Real cost example](#real-cost-example)
+  - [Further cost controls](#further-cost-controls)
+- [Usage](#usage)
+  - [Basic join](#basic-join)
+  - [With domain context](#with-domain-context)
+  - [See why matches were made](#see-why-matches-were-made)
+  - [Control cost](#control-cost)
+  - [Left join (audit unmatched rows)](#left-join-audit-unmatched-rows)
+  - [Multi-column join key](#multi-column-join-key)
+  - [Chaining multiple joins](#chaining-multiple-joins)
+- [Works with Any LLM](#works-with-any-llm)
+- [Works with Any Embedding Function](#works-with-any-embedding-function)
+- [vs. Alternatives](#vs-alternatives)
+- [Parameters](#parameters)
+- [License](#license)
+
 ```python
 from llm_join import fuzzy_join
 
