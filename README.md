@@ -285,6 +285,44 @@ result = fuzzy_join(
 )
 ```
 
+### Chaining multiple joins
+
+Each `fuzzy_join` returns a regular DataFrame — pipe them like `pd.merge`.
+
+```python
+# df1: transactions  (vendor + product columns)
+# df2: vendor master
+# df3: product catalog
+
+# Step 1 — match vendors
+step1 = fuzzy_join(
+    df1, df2,
+    left_on="vendor",
+    right_on="supplier_name",
+    llm=my_llm,
+    embed_fn=my_embed,
+    how="left",
+    return_reasoning=True,
+)
+step1 = step1.rename(columns={
+    "_llm_score":    "_vendor_score",
+    "_llm_reasoning": "_vendor_reasoning",
+    "_match_method": "_vendor_method",
+})
+
+# Step 2 — match products on result of step 1
+result = fuzzy_join(
+    step1, df3,
+    left_on="product",
+    right_on="catalog_item",
+    llm=my_llm,
+    embed_fn=my_embed,
+    how="left",
+    return_reasoning=True,
+)
+# result now has _vendor_score + _llm_score without column collision
+```
+
 ---
 
 ## Works with Any LLM
