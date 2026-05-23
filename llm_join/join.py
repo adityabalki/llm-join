@@ -94,10 +94,10 @@ def fuzzy_join(
             break
 
         candidates = [c for c, _ in candidates_with_scores]
-        result = scorer.score(left_val, candidates, cfg.context_str, threshold=cfg.threshold)
+        results = scorer.score(left_val, candidates, cfg.context_str, threshold=cfg.threshold)
         llm_call_count += 1
-        if result is not None:
-            matches.append(result)
+        if results:
+            matches.extend(results)
 
     return merger.merge(df1, df2, left_col, right_col, matches, how=how, return_reasoning=return_reasoning)
 

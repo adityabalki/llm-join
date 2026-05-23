@@ -21,7 +21,7 @@ class LLMScorer:
         candidates: list[str],
         context_str: str,
         threshold: float = 0.7,
-    ) -> Optional[MatchResult]:
+    ) -> list[MatchResult]:
         if self._is_async:
             raise TypeError(
                 "LLM is async; call score_async() instead, or pass a sync callable."
@@ -48,7 +48,7 @@ class LLMScorer:
             UserWarning,
             stacklevel=2,
         )
-        return None
+        return []
 
     async def score_async(
         self,
@@ -56,7 +56,7 @@ class LLMScorer:
         candidates: list[str],
         context_str: str,
         threshold: float = 0.7,
-    ) -> Optional[MatchResult]:
+    ) -> list[MatchResult]:
         prompt = build_prompt(left_val, candidates, context_str)
         last_exc: Optional[Exception] = None
         for attempt in range(self._max_retries + 1):
@@ -82,7 +82,7 @@ class LLMScorer:
             UserWarning,
             stacklevel=2,
         )
-        return None
+        return []
 
     def _parse(
         self,
@@ -90,7 +90,7 @@ class LLMScorer:
         candidates: list[str],
         raw: str,
         threshold: float,
-    ) -> Optional[MatchResult]:
+    ) -> list[MatchResult]:
         try:
             # strip markdown code fences if present
             cleaned = (
@@ -109,33 +109,38 @@ class LLMScorer:
                     parsed = json.loads(match.group())
                 except json.JSONDecodeError:
                     warnings.warn(f"LLM returned malformed JSON for '{left_val}': {raw!r}")
-                    return None
+                    return []
             else:
                 warnings.warn(f"LLM returned malformed JSON for '{left_val}': {raw!r}")
-                return None
+                return []
 
         if not isinstance(parsed, list):
             warnings.warn(f"LLM returned non-array JSON for '{left_val}': {raw!r}")
-            return None
+            return []
 
-        best_score = -1.0
-        best_idx = -1
-        best_reasoning = ""
+        # Collect all valid scored items above threshold
+        scored = []
         for item in parsed:
             idx = item.get("index", -1)
+            if not (0 <= idx < len(candidates)):
+                continue
             score = float(item.get("score", 0.0))
-            if score > best_score and 0 <= idx < len(candidates):
-                best_score = score
-                best_idx = idx
-                best_reasoning = item.get("reasoning", "")
+            if score >= threshold:
+                scored.append((score, idx, item.get("reasoning", "")))
 
-        if best_idx == -1 or best_score < threshold:
-            return None
+        if not scored:
+            return []
 
-        return MatchResult(
-            left_val=left_val,
-            right_val=candidates[best_idx],
-            score=best_score,
-            reasoning=best_reasoning,
-            embed_rank=best_idx,
-        )
+        # Find best score, return ALL candidates that tie at that score
+        best_score = max(s for s, _, _ in scored)
+        results = []
+        for score, idx, reasoning in scored:
+            if score == best_score:
+                results.append(MatchResult(
+                    left_val=left_val,
+                    right_val=candidates[idx],
+                    score=score,
+                    reasoning=reasoning,
+                    embed_rank=idx,
+                ))
+        return results
