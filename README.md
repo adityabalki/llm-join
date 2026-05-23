@@ -63,13 +63,15 @@ def llm(prompt):
         messages=[{"role": "user", "content": prompt}]
     ).choices[0].message.content
 
-# Join
+# Join (inner by default — only rows that matched)
 result = fuzzy_join(
     df1, df2,
     left_on="vendor",
     right_on="supplier_name",
     llm=llm,
+    embed_fn=my_embed,
     context="company names — match legal entity variants and abbreviations",
+    how="inner",   # "inner" | "left" | "right" | "outer"
 )
 
 print(result)
