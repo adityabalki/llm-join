@@ -106,9 +106,11 @@ def fuzzy_join(
                 reasoning="LLM failed — embed rank-0 fallback used",
                 embed_rank=0,
                 match_method="embed_fallback",
-                candidates=candidates,
+                candidates=candidates_with_scores,
             ))
         elif results:
+            for r in results:
+                r.candidates = candidates_with_scores
             matches.extend(results)
 
     return merger.merge(df1, df2, left_col, right_col, matches, how=how, return_reasoning=return_reasoning)
