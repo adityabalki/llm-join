@@ -106,6 +106,7 @@ def fuzzy_join(
                 reasoning="LLM failed — embed rank-0 fallback used",
                 embed_rank=0,
                 match_method="embed_fallback",
+                candidates=candidates,
             ))
         elif results:
             matches.extend(results)

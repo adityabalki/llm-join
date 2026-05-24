@@ -9,7 +9,8 @@ class MatchResult:
     score: float
     reasoning: str
     embed_rank: int = 0
-    match_method: str = "llm"  # "llm" or "embed_threshold"
+    match_method: str = "llm"  # "llm", "embed_threshold", or "embed_fallback"
+    candidates: list = None  # top-K candidates sent to LLM (None if LLM was not called)
 
 
 class Merger:
@@ -50,6 +51,7 @@ class Merger:
             "_llm_reasoning": [m.reasoning for m in matches],
             "_embed_rank": [m.embed_rank for m in matches],
             "_match_method": [m.match_method for m in matches],
+            "_llm_candidates": [m.candidates for m in matches],
         })
 
         df2_with_key = df2.merge(match_df, on=right_col, how="left")
@@ -57,7 +59,7 @@ class Merger:
 
         if not return_reasoning:
             result = result.drop(
-                columns=["_llm_score", "_llm_reasoning", "_embed_rank", "_match_method"],
+                columns=["_llm_score", "_llm_reasoning", "_embed_rank", "_match_method", "_llm_candidates"],
                 errors="ignore",
             )
 

@@ -154,6 +154,7 @@ class LLMScorer:
                 score=best_score,
                 reasoning=reasoning + tie_note,
                 embed_rank=idx,
+                candidates=candidates,
             )
             for idx, reasoning in tied
         ]
