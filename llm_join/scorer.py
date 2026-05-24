@@ -143,12 +143,13 @@ class LLMScorer:
         if match_all:
             # Return every candidate above threshold, sorted best score first
             scored.sort(key=lambda x: x[0], reverse=True)
+            total = len(scored)
             return [
                 MatchResult(
                     left_val=left_val,
                     right_val=candidates[idx],
                     score=score,
-                    reasoning=reasoning,
+                    reasoning=reasoning + f" [match_all: {total} candidates above threshold returned]",
                     embed_rank=idx,
                 )
                 for score, idx, reasoning in scored
