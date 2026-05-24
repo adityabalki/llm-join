@@ -94,6 +94,10 @@ def fuzzy_join(
             break
 
         candidates = [c for c, _ in candidates_with_scores]
+        candidates_debug = [
+            {"candidate": c, "embed_score": round(s, 4)}
+            for c, s in candidates_with_scores
+        ]
         results = scorer.score(left_val, candidates, cfg.context_str, threshold=cfg.threshold)
         llm_call_count += 1
         if results is None:
@@ -106,11 +110,11 @@ def fuzzy_join(
                 reasoning="LLM failed — embed rank-0 fallback used",
                 embed_rank=0,
                 match_method="embed_fallback",
-                candidates=candidates_with_scores,
+                candidates=candidates_debug,
             ))
         elif results:
             for r in results:
-                r.candidates = candidates_with_scores
+                r.candidates = candidates_debug
             matches.extend(results)
 
     return merger.merge(df1, df2, left_col, right_col, matches, how=how, return_reasoning=return_reasoning)
