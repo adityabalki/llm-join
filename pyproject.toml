@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-join"
-version = "0.2.4"
+version = "0.2.5"
 description = "Fuzzy join DataFrames using LLM scoring and embedding retrieval"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -12,8 +12,8 @@ license = { text = "MIT" }
 keywords = ["fuzzy-join", "llm", "entity-resolution", "pandas", "nlp"]
 dependencies = [
     "pandas>=1.5",
-    "numpy>=1.23",
-    "faiss-cpu>=1.8",
+    "numpy>=1.23,<2",
+    "faiss-cpu>=1.8,<1.14",
 ]
 
 [project.optional-dependencies]
