@@ -21,10 +21,10 @@ def fuzzy_join(
     context: str,
     column_context: Optional[dict] = None,
     top_k: int = 5,
-    threshold: float = 0.7,
+    llm_threshold: float = 0.7,
     how: str = "inner",
     batch_size: int = 32,
-    embed_threshold: Optional[float] = None,
+    embed_skip_threshold: float = 1.0,
     max_llm_calls: Optional[int] = None,
     max_retries: int = 3,
     return_reasoning: bool = False,
@@ -40,9 +40,9 @@ def fuzzy_join(
         context=context,
         column_context=column_context or {},
         top_k=top_k,
-        threshold=threshold,
+        llm_threshold=llm_threshold,
         batch_size=batch_size,
-        embed_threshold=embed_threshold,
+        embed_skip_threshold=embed_skip_threshold,
         max_llm_calls=max_llm_calls,
         max_retries=max_retries,
         match_all=match_all,
@@ -92,26 +92,18 @@ def fuzzy_join(
         if not candidates_with_scores:
             continue
 
-        if cfg.embed_threshold is not None:
-            best_candidate, best_score = candidates_with_scores[0]
-            if best_score >= cfg.embed_threshold:
-                embed_matches.append(MatchResult(
-                    left_val=left_val,
-                    right_val=best_candidate,
-                    score=best_score,
-                    reasoning="skipped — embed score above threshold",
-                    embed_rank=0,
-                    match_method="embed_threshold",
-                ))
-                continue
-            if best_score < (1.0 - cfg.embed_threshold):
-                warnings.warn(
-                    f"Row '{left_val}' skipped: top embed score {best_score:.3f} "
-                    f"below non-match threshold {1.0 - cfg.embed_threshold:.3f}",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                continue
+        best_candidate, best_score = candidates_with_scores[0]
+        if best_score >= cfg.embed_skip_threshold:
+            # Embed similarity high enough — skip LLM, use embed match directly
+            embed_matches.append(MatchResult(
+                left_val=left_val,
+                right_val=best_candidate,
+                score=best_score,
+                reasoning=f"skipped LLM — embed similarity {best_score:.4f} >= embed_skip_threshold {cfg.embed_skip_threshold}",
+                embed_rank=0,
+                match_method="embed_skip",
+            ))
+            continue
 
         llm_queue.append((left_val, candidates_with_scores))
 
@@ -190,7 +182,7 @@ def _score_sequential(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig) -> 
         candidates_debug = _make_debug(candidates_with_scores)
         results = scorer.score(
             left_val, candidates, cfg.context_str,
-            threshold=cfg.threshold, match_all=cfg.match_all,
+            llm_threshold=cfg.llm_threshold, match_all=cfg.match_all,
         )
         matches.extend(_process_results(results, left_val, candidates_with_scores, candidates_debug))
     return matches
@@ -204,7 +196,7 @@ def _score_threaded(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_c
         candidates = [c for c, _ in candidates_with_scores]
         results = scorer.score(
             left_val, candidates, cfg.context_str,
-            threshold=cfg.threshold, match_all=cfg.match_all,
+            llm_threshold=cfg.llm_threshold, match_all=cfg.match_all,
         )
         return idx, results, left_val, candidates_with_scores
 
@@ -236,7 +228,7 @@ def _score_async(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_conc
                 candidates = [c for c, _ in candidates_with_scores]
                 results = await scorer.score_async(
                     left_val, candidates, cfg.context_str,
-                    threshold=cfg.threshold, match_all=cfg.match_all,
+                    llm_threshold=cfg.llm_threshold, match_all=cfg.match_all,
                 )
                 return results, left_val, candidates_with_scores
 

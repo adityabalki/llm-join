@@ -188,7 +188,7 @@ result = fuzzy_join(
     left_on="product_name", right_on="sku",
     llm=my_llm, embed_fn=my_embed,
     context="procurement — match buyer product descriptions to supplier SKU codes",
-    top_k=3, threshold=0.7,
+    top_k=3, llm_threshold=0.7,
     llm_concurrency=10,
 )
 ```
@@ -247,13 +247,13 @@ Score each candidate (0.0–1.0):
 ]
 ```
 
-**Apply threshold=0.7:**
+**Apply llm_threshold=0.7:**
 
 | Candidate | LLM Score | Decision |
 |---|---:|---|
 | `CABLE-USBC-200CM-BLK` | 0.97 | best match — joined |
-| `CABLE-USBA-200CM-BLK` | 0.38 | below threshold |
-| `CHAIR-TASK-FIXED-BLK` | 0.04 | below threshold |
+| `CABLE-USBA-200CM-BLK` | 0.38 | below llm_threshold |
+| `CHAIR-TASK-FIXED-BLK` | 0.04 | below llm_threshold |
 
 ### Step 4 — Merge matched rows
 
@@ -301,7 +301,7 @@ Your LLM sees a small batch of plausible candidates — not the full cross produ
 |-------|-----------|----------------|
 | 10k × 100k, top_k=5 | 50,000 | ~$0.75 |
 | 10k × 100k, top_k=3 | 30,000 | ~$0.45 |
-| 10k × 100k, embed_threshold=0.95 | ~5,000 | ~$0.08 |
+| 10k × 100k, embed_skip_threshold=0.95 | ~5,000 | ~$0.08 |
 
 ### Cost controls
 
@@ -312,9 +312,9 @@ result = fuzzy_join(
     llm=my_llm, embed_fn=my_embed,
     context="...",
     llm_concurrency=10,
-    top_k=3,               # fewer candidates = fewer LLM tokens per row
-    embed_threshold=0.95,  # skip LLM entirely if embed score is high enough
-    max_llm_calls=1000,    # hard cap — warns and stops if hit
+    top_k=3,                    # fewer candidates = fewer LLM tokens per row
+    embed_skip_threshold=0.95,  # skip LLM entirely if embed score is high enough
+    max_llm_calls=1000,         # hard cap — warns and returns partial result if hit
 )
 ```
 
@@ -420,8 +420,8 @@ result = fuzzy_join(
     embed_fn=my_embed,
     context="company names — match legal entity variants",
     llm_concurrency=10,
-    embed_threshold=0.95,  # skip LLM if embedding match is strong enough
-    max_llm_calls=500,     # hard cap — warns and returns partial result if hit
+    embed_skip_threshold=0.95,  # skip LLM if embedding match is strong enough
+    max_llm_calls=500,          # hard cap — warns and returns partial result if hit
     top_k=3,               # fewer candidates = fewer LLM tokens
 )
 ```
@@ -602,9 +602,9 @@ def my_embed(texts):
 - **Tie handling** — when candidates score equally, all are returned (correct SQL join behavior)
 - **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`
 - **Debug candidates** — `_llm_candidates` shows exactly what was sent to the LLM with embed scores, for tuning
-- **Embed threshold shortcut** — `embed_threshold` skips LLM for obvious matches
+- **Embed skip shortcut** — `embed_skip_threshold` skips LLM when embed similarity is high enough (default 1.0 = only exact matches skip)
 - **Embed fallback** — if LLM fails all retries, top embed candidate is used automatically
-- **Cost controls** — `top_k`, `embed_threshold`, `max_llm_calls`
+- **Cost controls** — `top_k`, `embed_skip_threshold`, `max_llm_calls`
 - **Multi-match mode** — `match_all=True` returns all candidates above threshold
 - **Parallel LLM calls** — `llm_concurrency` runs multiple LLM calls at once
 - **Retry with backoff** — failed LLM calls retry with exponential backoff (1s, 2s, 4s…)
@@ -624,9 +624,9 @@ def my_embed(texts):
 | `llm_concurrency` | required | How many LLM calls to run in parallel. `1` = sequential. Start with `10` and adjust based on your API rate limit. |
 | `column_context` | `{}` | Per-column descriptions `{"col": "description"}` — adds extra detail to the prompt beyond `context`. |
 | `top_k` | `5` | How many embedding candidates to retrieve per left row before LLM scoring. |
-| `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. |
+| `llm_threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. Rows where LLM scores below this are not joined. |
 | `how` | `"inner"` | Join type: `inner` / `left` / `right` / `outer` — same as `pd.merge`. |
-| `embed_threshold` | `None` | If set, skip LLM when top embed score is at or above this value. |
+| `embed_skip_threshold` | `1.0` | Skip LLM when top embed similarity is at or above this value. Default `1.0` means only identical vectors (exact same text) skip LLM. Lower it (e.g. `0.92`) to skip LLM for near-identical matches and save cost. |
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
 | `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |
 | `batch_size` | `32` | Batch size for `embed_fn` calls. |

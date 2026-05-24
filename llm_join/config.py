@@ -12,9 +12,9 @@ class ColumnConfig:
     context: str = ""
     column_context: dict[str, str] = field(default_factory=dict)
     top_k: int = 5
-    threshold: float = 0.7
+    llm_threshold: float = 0.7
     batch_size: int = 32
-    embed_threshold: Optional[float] = None
+    embed_skip_threshold: float = 1.0
     max_llm_calls: Optional[int] = None
     max_retries: int = 3
     match_all: bool = False
@@ -29,14 +29,14 @@ class ColumnConfig:
                 "context must not be empty — describe what the columns represent and what kind of match to make. "
                 "Example: \"pharmaceutical drug names — match generic INN names to US brand names\""
             )
-        if not 0.0 < self.threshold <= 1.0:
-            raise ValueError(f"threshold must be in (0, 1], got {self.threshold}")
+        if not 0.0 < self.llm_threshold <= 1.0:
+            raise ValueError(f"llm_threshold must be in (0, 1], got {self.llm_threshold}")
         if self.top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {self.top_k}")
         if self.batch_size < 1:
             raise ValueError(f"batch_size must be >= 1, got {self.batch_size}")
-        if self.embed_threshold is not None and not 0.0 < self.embed_threshold <= 1.0:
-            raise ValueError(f"embed_threshold must be in (0, 1], got {self.embed_threshold}")
+        if not 0.0 < self.embed_skip_threshold <= 1.0:
+            raise ValueError(f"embed_skip_threshold must be in (0, 1], got {self.embed_skip_threshold}")
         if self.max_llm_calls is not None and self.max_llm_calls < 1:
             raise ValueError(f"max_llm_calls must be >= 1, got {self.max_llm_calls}")
         if self.max_retries < 0:

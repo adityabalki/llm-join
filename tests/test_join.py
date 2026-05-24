@@ -14,12 +14,18 @@ def mock_llm(prompt: str) -> str:
         for i in range(count)
     ])
 
-# Mock embed_fn: deterministic vectors so retriever always returns all corpus items
+# Mock embed_fn: deterministic vectors based on text content.
+# Different texts always get different vectors → cosine never reaches 1.0 between
+# distinct texts, so embed_skip_threshold=1.0 (default) doesn't fire in tests.
 def mock_embed(texts):
-    # Each text gets a unique one-hot-ish vector so faiss can retrieve all
-    n = len(texts)
-    vecs = np.eye(max(n, 10), dtype="float32")[:n]
-    return vecs
+    dim = 32
+    vecs = np.zeros((len(texts), dim), dtype="float32")
+    for i, text in enumerate(texts):
+        seed = abs(hash(text)) % (2 ** 31)
+        rng = np.random.RandomState(seed)
+        vecs[i] = rng.randn(dim).astype("float32")
+    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+    return vecs / (norms + 1e-8)
 
 DF1 = pd.DataFrame({"drug": ["aspirin", "ibuprofen"], "dose": [100, 200]})
 DF2 = pd.DataFrame({"brand": ["Bayer Aspirin", "Advil"], "price": [5.0, 8.0]})
@@ -75,7 +81,7 @@ def test_threshold_low_matches_everything():
         embed_fn=mock_embed,
         context=CTX,
         top_k=2,
-        threshold=0.01,
+        llm_threshold=0.01,
         how="inner",
         llm_concurrency=1,
     )
@@ -90,7 +96,7 @@ def test_threshold_one_matches_nothing():
         embed_fn=mock_embed,
         context=CTX,
         top_k=2,
-        threshold=1.0,
+        llm_threshold=1.0,
         how="inner",
         llm_concurrency=1,
     )

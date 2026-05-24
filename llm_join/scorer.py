@@ -20,7 +20,7 @@ class LLMScorer:
         left_val: str,
         candidates: list[str],
         context_str: str,
-        threshold: float = 0.7,
+        llm_threshold: float = 0.7,
         match_all: bool = False,
     ) -> Optional[list[MatchResult]]:
         if self._is_async:
@@ -32,7 +32,7 @@ class LLMScorer:
         for attempt in range(self._max_retries + 1):
             try:
                 raw = self._llm(prompt)
-                return self._parse(left_val, candidates, raw, threshold, match_all=match_all)
+                return self._parse(left_val, candidates, raw, llm_threshold, match_all=match_all)
             except Exception as exc:
                 last_exc = exc
                 if attempt < self._max_retries:
@@ -57,7 +57,7 @@ class LLMScorer:
         left_val: str,
         candidates: list[str],
         context_str: str,
-        threshold: float = 0.7,
+        llm_threshold: float = 0.7,
         match_all: bool = False,
     ) -> Optional[list[MatchResult]]:
         prompt = build_prompt(left_val, candidates, context_str)
@@ -68,7 +68,7 @@ class LLMScorer:
                     raw = await self._llm(prompt)
                 else:
                     raw = self._llm(prompt)
-                return self._parse(left_val, candidates, raw, threshold, match_all=match_all)
+                return self._parse(left_val, candidates, raw, llm_threshold, match_all=match_all)
             except Exception as exc:
                 last_exc = exc
                 if attempt < self._max_retries:
@@ -93,7 +93,7 @@ class LLMScorer:
         left_val: str,
         candidates: list[str],
         raw: str,
-        threshold: float,
+        llm_threshold: float,
         match_all: bool = False,
     ) -> list[MatchResult]:
         try:
@@ -134,7 +134,7 @@ class LLMScorer:
                 continue  # LLM returned duplicate index — skip
             seen_indices.add(idx)
             score = float(item.get("score", 0.0))
-            if score >= threshold:
+            if score >= llm_threshold:
                 scored.append((score, idx, item.get("reasoning", "")))
 
         if not scored:
