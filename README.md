@@ -1,6 +1,6 @@
 # llm-join
 
-> ⚠️ **Work in Progress** — API and features are still evolving. Expect breaking changes between minor versions until v1.0.
+> ⚠️ **Work in Progress** — Features are still evolving. Expect breaking changes between minor versions until v1.0.
 
 **The pandas join that understands what your data means.**
 
