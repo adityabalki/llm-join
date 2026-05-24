@@ -585,6 +585,7 @@ def my_embed(texts):
 - **Embed threshold shortcut** — `embed_threshold` skips LLM entirely for obvious matches, saving cost
 - **Embed fallback** — if LLM fails all retries, falls back to top embed candidate automatically (`_match_method="embed_fallback"`)
 - **Cost controls** — `top_k`, `embed_threshold`, `max_llm_calls` give full budget control
+- **Multi-match mode** — `match_all=True` returns every candidate above threshold when one left value maps to multiple right values
 - **Retry with backoff** — `max_retries` retries failed LLM calls with exponential backoff (1s, 2s, 4s…)
 - **MIT license** — use in commercial projects without restriction
 
@@ -607,7 +608,8 @@ def my_embed(texts):
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns partial result if hit. |
 | `max_retries` | `3` | Retry failed LLM calls with exponential backoff (1s, 2s, 4s…). Set `0` to disable. On full failure, falls back to top embed candidate. |
 | `batch_size` | `32` | Embedding batch size for `embed_fn` calls |
-| `return_reasoning` | `False` | Append debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` (`"llm"` / `"embed_threshold"` / `"embed_fallback"`) |
+| `return_reasoning` | `False` | Append debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` (`"llm"` / `"embed_threshold"` / `"embed_fallback"`), `_llm_candidates` |
+| `match_all` | `False` | Return **all** candidates above `threshold`, not just the best scorer. Use when one left value legitimately maps to multiple right values (e.g. `"aspirin"` → `"acetylsalicylic acid"`, `"Bayer Aspirin Tablet"`, `"aspirin 100mg tablet"`). |
 
 ---
 

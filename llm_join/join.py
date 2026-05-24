@@ -26,6 +26,7 @@ def fuzzy_join(
     max_llm_calls: Optional[int] = None,
     max_retries: int = 3,
     return_reasoning: bool = False,
+    match_all: bool = False,
 ) -> pd.DataFrame:
     # Normalise column names to single string (multi-col join concatenates values)
     left_col, right_col, df1, df2 = _normalise_cols(df1, df2, left_on, right_on)
@@ -42,6 +43,7 @@ def fuzzy_join(
         embed_threshold=embed_threshold,
         max_llm_calls=max_llm_calls,
         max_retries=max_retries,
+        match_all=match_all,
     )
 
     retriever = EmbeddingRetriever(embed_fn=cfg.embed_fn)
@@ -98,7 +100,7 @@ def fuzzy_join(
             {"candidate": c, "embed_score": round(s, 4)}
             for c, s in candidates_with_scores
         ]
-        results = scorer.score(left_val, candidates, cfg.context_str, threshold=cfg.threshold)
+        results = scorer.score(left_val, candidates, cfg.context_str, threshold=cfg.threshold, match_all=cfg.match_all)
         llm_call_count += 1
         if results is None:
             # LLM failed all retries — fall back to highest-scoring embed candidate

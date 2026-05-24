@@ -17,6 +17,7 @@ class ColumnConfig:
     embed_threshold: Optional[float] = None
     max_llm_calls: Optional[int] = None
     max_retries: int = 3
+    match_all: bool = False
 
     def __post_init__(self):
         if not self.left_col:

@@ -21,6 +21,7 @@ class LLMScorer:
         candidates: list[str],
         context_str: str,
         threshold: float = 0.7,
+        match_all: bool = False,
     ) -> Optional[list[MatchResult]]:
         if self._is_async:
             raise TypeError(
@@ -31,7 +32,7 @@ class LLMScorer:
         for attempt in range(self._max_retries + 1):
             try:
                 raw = self._llm(prompt)
-                return self._parse(left_val, candidates, raw, threshold)
+                return self._parse(left_val, candidates, raw, threshold, match_all=match_all)
             except Exception as exc:
                 last_exc = exc
                 if attempt < self._max_retries:
@@ -57,6 +58,7 @@ class LLMScorer:
         candidates: list[str],
         context_str: str,
         threshold: float = 0.7,
+        match_all: bool = False,
     ) -> Optional[list[MatchResult]]:
         prompt = build_prompt(left_val, candidates, context_str)
         last_exc: Optional[Exception] = None
@@ -66,7 +68,7 @@ class LLMScorer:
                     raw = await self._llm(prompt)
                 else:
                     raw = self._llm(prompt)
-                return self._parse(left_val, candidates, raw, threshold)
+                return self._parse(left_val, candidates, raw, threshold, match_all=match_all)
             except Exception as exc:
                 last_exc = exc
                 if attempt < self._max_retries:
@@ -92,6 +94,7 @@ class LLMScorer:
         candidates: list[str],
         raw: str,
         threshold: float,
+        match_all: bool = False,
     ) -> list[MatchResult]:
         try:
             # strip markdown code fences if present
@@ -137,7 +140,21 @@ class LLMScorer:
         if not scored:
             return []
 
-        # Find best score, return ALL candidates that tie at that score
+        if match_all:
+            # Return every candidate above threshold, sorted best score first
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [
+                MatchResult(
+                    left_val=left_val,
+                    right_val=candidates[idx],
+                    score=score,
+                    reasoning=reasoning,
+                    embed_rank=idx,
+                )
+                for score, idx, reasoning in scored
+            ]
+
+        # Default: return only best score + ties at that score
         best_score = max(s for s, _, _ in scored)
         tied = [(idx, reasoning) for score, idx, reasoning in scored if score == best_score]
 
