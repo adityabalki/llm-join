@@ -1,6 +1,6 @@
 # llm-join
 
-> 📝 **README is a work in progress** — more examples and documentation coming soon.
+> **README is a work in progress** — more examples and documentation coming soon.
 
 **The pandas join that understands what your data means.**
 
