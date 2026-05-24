@@ -586,6 +586,7 @@ def my_embed(texts):
 - **Embed fallback** — if LLM fails all retries, falls back to top embed candidate automatically (`_match_method="embed_fallback"`)
 - **Cost controls** — `top_k`, `embed_threshold`, `max_llm_calls` give full budget control
 - **Multi-match mode** — `match_all=True` returns every candidate above threshold when one left value maps to multiple right values
+- **Parallel LLM calls** — `llm_concurrency=N` runs N LLM calls simultaneously via threads (sync) or asyncio semaphore (async), with automatic embed fallback on failure
 - **Retry with backoff** — `max_retries` retries failed LLM calls with exponential backoff (1s, 2s, 4s…)
 - **MIT license** — use in commercial projects without restriction
 
@@ -610,6 +611,7 @@ def my_embed(texts):
 | `batch_size` | `32` | Embedding batch size for `embed_fn` calls |
 | `return_reasoning` | `False` | Append debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` (`"llm"` / `"embed_threshold"` / `"embed_fallback"`), `_llm_candidates` |
 | `match_all` | `False` | Return **all** candidates above `threshold`, not just the best scorer. Use when one left value legitimately maps to multiple right values (e.g. `"aspirin"` → `"acetylsalicylic acid"`, `"Bayer Aspirin Tablet"`, `"aspirin 100mg tablet"`). |
+| `llm_concurrency` | `1` | Number of parallel LLM calls. `1` = sequential (default). Set to `10`–`50` to match your API rate limit. Sync LLMs use `ThreadPoolExecutor`; async LLMs use `asyncio` with a semaphore. Works in Databricks and Jupyter. |
 
 ---
 
