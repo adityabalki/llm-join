@@ -93,6 +93,7 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with y
 | **Research** | Author name | Citation database | Disambiguate authors |
 | **Government** | Vendor name | Tax registry | Consolidate procurement spend |
 | **Real estate** | Raw address input | Property records DB | Standardize and match addresses |
+| **Pharma HR** | Medical Science Liaison roster (Veeva CRM) | Employee master (Workday) | Reconcile field medical staff assignments across CRM and HR for compliance audits — same person recorded as "Dr. Sarah J. Connor, MSL" in one system and "Connor, S." in the other |
 
 ---
 

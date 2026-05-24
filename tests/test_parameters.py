@@ -337,6 +337,26 @@ class TestHow:
         )
         assert result["price"].notna().all()
 
+    def test_full_outer_join(self):
+        """how='full' returns all rows from both sides (full outer join)."""
+        result = fuzzy_join(
+            DF1, DF2, left_on="drug", right_on="brand",
+            llm=mock_llm, embed_fn=mock_embed,
+            context=CTX, top_k=1, how="full", llm_concurrency=1,
+        )
+        assert isinstance(result, pd.DataFrame)
+        assert "dose" in result.columns
+        assert "price" in result.columns
+
+    def test_outer_string_now_invalid(self):
+        """how='outer' is no longer valid — must use 'full'."""
+        with pytest.raises(ValueError, match="how"):
+            fuzzy_join(
+                DF1, DF2, left_on="drug", right_on="brand",
+                llm=mock_llm, embed_fn=mock_embed,
+                context=CTX, how="outer", llm_concurrency=1,
+            )
+
     def test_invalid_how_raises(self):
         with pytest.raises(ValueError, match="how"):
             fuzzy_join(
