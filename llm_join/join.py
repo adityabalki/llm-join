@@ -29,7 +29,7 @@ def fuzzy_join(
     max_retries: int = 3,
     return_reasoning: bool = False,
     match_all: bool = False,
-    llm_concurrency: int = 1,
+    llm_concurrency: int,
 ) -> pd.DataFrame:
     left_col, right_col, df1, df2 = _normalise_cols(df1, df2, left_on, right_on)
 

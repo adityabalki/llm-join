@@ -148,7 +148,8 @@ result = fuzzy_join(
     llm=my_llm,
     embed_fn=my_embed,
     context="company names — match legal entity variants and abbreviations",
-    how="inner",   # "inner" | "left" | "right" | "outer"
+    llm_concurrency=10,   # parallel LLM calls — set to match your API rate limit
+    how="inner",          # "inner" | "left" | "right" | "outer"
 )
 
 print(result)
@@ -611,7 +612,7 @@ def my_embed(texts):
 | `batch_size` | `32` | Embedding batch size for `embed_fn` calls |
 | `return_reasoning` | `False` | Append debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` (`"llm"` / `"embed_threshold"` / `"embed_fallback"`), `_llm_candidates` |
 | `match_all` | `False` | Return **all** candidates above `threshold`, not just the best scorer. Use when one left value legitimately maps to multiple right values (e.g. `"aspirin"` → `"acetylsalicylic acid"`, `"Bayer Aspirin Tablet"`, `"aspirin 100mg tablet"`). |
-| `llm_concurrency` | `1` | Number of parallel LLM calls. `1` = sequential (default). Set to `10`–`50` to match your API rate limit. Sync LLMs use `ThreadPoolExecutor`; async LLMs use `asyncio` with a semaphore. Works in Databricks and Jupyter. |
+| `llm_concurrency` | required | Number of parallel LLM calls. `1` = sequential. Set to `10`–`50` to match your API rate limit. Sync LLMs use `ThreadPoolExecutor`; async LLMs use `asyncio` with a semaphore. Works in Databricks and Jupyter. |
 
 ---
 
