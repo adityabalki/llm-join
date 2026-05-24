@@ -52,8 +52,35 @@ def fuzzy_join(
     scorer = LLMScorer(llm, max_retries=cfg.max_retries)
     merger = Merger()
 
-    left_vals = df1[left_col].astype(str).tolist()
     right_vals = df2[right_col].astype(str).tolist()
+
+    # Deduplicate left values — score each unique value once, pandas merge fans out to all rows.
+    # E.g. 80k rows with 500 unique drug names → 500 LLM calls, not 80k.
+    _seen: set = set()
+    left_vals: list[str] = []
+    for v in df1[left_col].astype(str):
+        if v not in _seen:
+            _seen.add(v)
+            left_vals.append(v)
+    n_total = len(df1)
+    n_unique = len(left_vals)
+    if n_unique < n_total:
+        warnings.warn(
+            f"llm-join: deduplicated {n_total} left rows → {n_unique} unique values. "
+            f"LLM called {n_unique} times (not {n_total}). Results fanned out via merge.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # Warn on large scale so users know to tune embed_threshold / max_llm_calls
+    if n_unique > 5_000 and cfg.embed_threshold is None and cfg.max_llm_calls is None:
+        warnings.warn(
+            f"llm-join: {n_unique} unique left values → up to {n_unique} LLM calls. "
+            f"For large datasets, consider embed_threshold (skip LLM for high-confidence embed matches) "
+            f"or max_llm_calls to cap cost.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     candidates_per_row = retriever.retrieve_with_scores(left_vals, right_vals, top_k=cfg.top_k)
 
