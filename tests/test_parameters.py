@@ -728,3 +728,80 @@ class TestEmbedSkipWithReasoning:
         )
         assert (result["_llm_score"] >= 0.0).all()
         assert (result["_llm_score"] <= 1.0).all()
+
+
+# ---------------------------------------------------------------------------
+# drop_duplicates safety net
+# ---------------------------------------------------------------------------
+
+class TestNoDuplicates:
+    def test_identical_df1_rows_deduplicated(self):
+        """df1 has two completely identical rows → output must not have duplicate rows."""
+        df1 = pd.DataFrame({"drug": ["aspirin", "aspirin"], "dose": [100, 100]})  # truly identical
+        df2 = pd.DataFrame({"brand": ["Bayer Aspirin"], "price": [5.0]})
+        result = fuzzy_join(
+            df1, df2, left_on="drug", right_on="brand",
+            llm=mock_llm, embed_fn=mock_embed,
+            context=CTX, top_k=1, how="inner", llm_concurrency=1,
+        )
+        # Both df1 rows are identical in all columns; after join both match same right row
+        # drop_duplicates should collapse to 1 row
+        assert len(result) == 1
+        assert not result.duplicated().any()
+
+    def test_distinct_df1_rows_not_dropped(self):
+        """df1 rows differ in non-key column → both preserved after join."""
+        df1 = pd.DataFrame({"drug": ["aspirin", "aspirin"], "dose": [100, 200]})  # different dose
+        df2 = pd.DataFrame({"brand": ["Bayer Aspirin"], "price": [5.0]})
+        result = fuzzy_join(
+            df1, df2, left_on="drug", right_on="brand",
+            llm=mock_llm, embed_fn=mock_embed,
+            context=CTX, top_k=1, how="inner", llm_concurrency=1,
+        )
+        # Rows differ in dose → NOT duplicates → both preserved
+        assert len(result) == 2
+        assert set(result["dose"]) == {100, 200}
+
+    def test_multiple_left_values_same_right_no_cartesian(self):
+        """Two different left values both match the same right value → 2 output rows, not 4."""
+        # RC2: multiple left vals → same right val should not cartesian-explode
+        df1 = pd.DataFrame({"drug": ["aspirin 100mg", "aspirin 200mg"], "patient": [1, 2]})
+        df2 = pd.DataFrame({"brand": ["Bayer Aspirin"], "price": [5.0]})
+        result = fuzzy_join(
+            df1, df2, left_on="drug", right_on="brand",
+            llm=mock_llm, embed_fn=mock_embed,
+            context=CTX, top_k=1, how="inner", llm_concurrency=1,
+        )
+        assert len(result) == 2
+        assert set(result["patient"]) == {1, 2}
+
+    def test_no_duplicates_with_return_reasoning(self):
+        """drop_duplicates must not crash when _llm_candidates (list column) is present."""
+        result = fuzzy_join(
+            DF1, DF2, left_on="drug", right_on="brand",
+            llm=mock_llm, embed_fn=mock_embed,
+            context=CTX, top_k=1, how="inner",
+            return_reasoning=True, llm_concurrency=1,
+        )
+        assert not result.drop(columns=["_llm_candidates"]).duplicated().any()
+
+    def test_no_duplicates_with_embed_skip_and_reasoning(self):
+        """embed_skip path + return_reasoning=True must not crash or produce duplicates."""
+        result = fuzzy_join(
+            DF1, DF2, left_on="drug", right_on="brand",
+            llm=failing_llm, embed_fn=all_same_embed,
+            context=CTX, top_k=1, how="inner",
+            return_reasoning=True, llm_concurrency=1,
+        )
+        assert not result.drop(columns=["_llm_candidates"]).duplicated().any()
+
+    def test_output_never_has_more_rows_than_df1_inner(self):
+        """inner join, match_all=False: output rows ≤ df1 rows (each left row gets at most 1 match)."""
+        df1 = pd.DataFrame({"drug": ["aspirin", "ibuprofen", "paracetamol"], "dose": [100, 200, 500]})
+        df2 = pd.DataFrame({"brand": ["Bayer Aspirin", "Advil", "Tylenol"], "price": [5.0, 8.0, 3.0]})
+        result = fuzzy_join(
+            df1, df2, left_on="drug", right_on="brand",
+            llm=mock_llm, embed_fn=mock_embed,
+            context=CTX, top_k=1, how="inner", llm_concurrency=1,
+        )
+        assert len(result) <= len(df1)

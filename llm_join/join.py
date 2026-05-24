@@ -52,10 +52,7 @@ def fuzzy_join(
     scorer = LLMScorer(llm, max_retries=cfg.max_retries)
     merger = Merger()
 
-    right_vals = df2[right_col].astype(str).tolist()
-
-    # Deduplicate left values — score each unique value once, pandas merge fans out to all rows.
-    # E.g. 80k rows with 500 unique drug names → 500 LLM calls, not 80k.
+    # Deduplicate left values — LLM called once per unique value, pandas merge fans out.
     _seen: set = set()
     left_vals: list[str] = []
     for v in df1[left_col].astype(str):
@@ -72,11 +69,31 @@ def fuzzy_join(
             stacklevel=2,
         )
 
-    # Warn on large scale so users know to tune embed_threshold / max_llm_calls
-    if n_unique > 5_000 and cfg.embed_threshold is None and cfg.max_llm_calls is None:
+    # Deduplicate right values — prevents duplicate candidates in FAISS results.
+    # df2 can have multiple rows with same right_col value; FAISS must only see unique ones.
+    # Pandas merge fans results back to all matching df2 rows.
+    _r_seen: set = set()
+    right_vals: list[str] = []
+    for v in df2[right_col].astype(str):
+        if v not in _r_seen:
+            _r_seen.add(v)
+            right_vals.append(v)
+    n_right_total = len(df2)
+    n_right_unique = len(right_vals)
+    if n_right_unique < n_right_total:
+        warnings.warn(
+            f"llm-join: df2 has {n_right_total - n_right_unique} duplicate right-column values. "
+            f"Deduplicated to {n_right_unique} unique candidates for FAISS. "
+            f"Consider deduplicating df2 before joining to avoid unexpected output rows.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # Warn on large scale
+    if n_unique > 5_000 and cfg.embed_skip_threshold >= 1.0 and cfg.max_llm_calls is None:
         warnings.warn(
             f"llm-join: {n_unique} unique left values → up to {n_unique} LLM calls. "
-            f"For large datasets, consider embed_threshold (skip LLM for high-confidence embed matches) "
+            f"For large datasets, consider embed_skip_threshold (skip LLM for high-confidence matches) "
             f"or max_llm_calls to cap cost.",
             UserWarning,
             stacklevel=2,
