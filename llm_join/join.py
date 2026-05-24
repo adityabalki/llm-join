@@ -102,7 +102,9 @@ def fuzzy_join(
     llm_matches = _score_rows(scorer, llm_queue, cfg, llm_concurrency)
 
     matches = embed_matches + llm_matches
-    return merger.merge(df1, df2, left_col, right_col, matches, how=how, return_reasoning=return_reasoning)
+    result = merger.merge(df1, df2, left_col, right_col, matches, how=how, return_reasoning=return_reasoning)
+    # Drop temp composite-key columns injected by _normalise_cols
+    return result.drop(columns=["__left_key__", "__right_key__"], errors="ignore")
 
 
 # ---------------------------------------------------------------------------
