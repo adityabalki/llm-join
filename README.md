@@ -4,12 +4,18 @@
 
 **The pandas join that understands what your data means.**
 
-`pd.merge` joins on exact values. `llm-join` joins on *meaning* — using embeddings to find candidates and an LLM you already have to decide if they match.
+`pd.merge` joins on exact values. `llm-join` joins on meaning — using embeddings to find candidates and an LLM you already have to decide if they match.
 
 ```python
 from llm_join import fuzzy_join
 
-result = fuzzy_join(df1, df2, left_on="vendor", right_on="supplier_name", llm=my_llm, embed_fn=my_embed, context="...")
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor", right_on="supplier_name",
+    llm=my_llm, embed_fn=my_embed,
+    context="company names",
+    llm_concurrency=10,
+)
 ```
 
 ---
@@ -23,11 +29,7 @@ result = fuzzy_join(df1, df2, left_on="vendor", right_on="supplier_name", llm=my
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
 - [Cost & Scale](#cost--scale)
-  - [The problem with naive LLM joins](#the-problem-with-naive-llm-joins)
-  - [Stage 1: Embeddings narrow the search](#stage-1-embeddings-narrow-the-search-cheap)
-  - [Stage 2: LLM scores only the hard cases](#stage-2-llm-scores-only-the-hard-cases-accurate)
-  - [Real cost example](#real-cost-example)
-  - [Further cost controls](#further-cost-controls)
+- [Performance](#performance)
 - [Usage](#usage)
   - [Basic join](#basic-join)
   - [With domain context](#with-domain-context)
@@ -35,6 +37,7 @@ result = fuzzy_join(df1, df2, left_on="vendor", right_on="supplier_name", llm=my
   - [Control cost](#control-cost)
   - [Left join (audit unmatched rows)](#left-join-audit-unmatched-rows)
   - [Multi-column join key](#multi-column-join-key)
+  - [Match all results](#match-all-results)
   - [Chaining multiple joins](#chaining-multiple-joins)
 - [Works with Any LLM](#works-with-any-llm)
 - [Works with Any Embedding Function](#works-with-any-embedding-function)
@@ -57,7 +60,7 @@ You have two DataFrames. Same data, different text:
 
 `pd.merge` returns nothing. Fuzzy string matching gets the wrong answer. You end up writing custom logic — or doing it by hand.
 
-**llm-join solves this in one line.**
+**llm-join solves this in one function call.**
 
 ---
 
@@ -67,13 +70,13 @@ You have two DataFrames. Same data, different text:
 Exact string match only. Fails on any variation in naming.
 
 ### vs. fuzzy string matching (`fuzzywuzzy`, `rapidfuzz`)
-Character similarity, not semantic meaning. `"iPhone 14 Pro"` vs `"iPhone 14 Pro Max"` scores high — but they are different products. `"CABLE-USBC-200CM-BLK"` vs `"USB-C charging cable 2m black"` scores near zero — even though they are the same item.
+Character similarity, not meaning. `"iPhone 14 Pro"` vs `"iPhone 14 Pro Max"` scores high — but they are different products. `"CABLE-USBC-200CM-BLK"` vs `"USB-C charging cable 2m black"` scores near zero — even though they are the same item.
 
 ### vs. embedding similarity alone
-Fast and cheap, but no reasoning. Can't explain *why* two values match or catch false positives confidently.
+Fast and cheap, but no reasoning. Can't explain why two values match or catch false positives confidently.
 
 ### llm-join
-Embeddings narrow down candidates (fast, cheap). LLM makes the final call with context (accurate). You get the best of both.
+Embeddings narrow down candidates (fast, cheap). LLM makes the final call with your context (accurate). You get the best of both.
 
 ---
 
@@ -99,14 +102,12 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with c
 pip install llm-join
 ```
 
+Or from source:
+
 ```bash
-# Or install from source
 git clone https://github.com/adityabalki/llm-join.git
 cd llm-join
 pip install -e .
-
-# Or install from wheel (air-gapped machines)
-pip install llm_join-0.2.0-py3-none-any.whl
 ```
 
 ---
@@ -148,8 +149,8 @@ result = fuzzy_join(
     llm=my_llm,
     embed_fn=my_embed,
     context="company names — match legal entity variants and abbreviations",
-    llm_concurrency=10,   # parallel LLM calls — set to match your API rate limit
-    how="inner",          # "inner" | "left" | "right" | "outer"
+    llm_concurrency=10,   # how many LLM calls to run in parallel
+    how="inner",
 )
 
 print(result)
@@ -165,7 +166,7 @@ print(result)
 
 ## How It Works
 
-**Example:** A retailer's internal purchase orders use plain English product names. Their supplier sends a catalog with SKU codes. `pd.merge` matches nothing. llm-join bridges the gap.
+**Example:** A retailer's purchase orders use plain English product names. Their supplier sends a catalog with SKU codes. `pd.merge` matches nothing. llm-join bridges the gap.
 
 ```python
 orders_df = pd.DataFrame({"product_name": [
@@ -188,14 +189,15 @@ result = fuzzy_join(
     llm=my_llm, embed_fn=my_embed,
     context="procurement — match buyer product descriptions to supplier SKU codes",
     top_k=3, threshold=0.7,
+    llm_concurrency=10,
 )
 ```
 
 ### Step 1 — Embed both columns
 
-Every value is converted to a vector. No API call — pure math, milliseconds.
+Every value gets converted to a vector. No API call — pure math, runs in milliseconds.
 
-| Value | Meaning captured in vector |
+| Value | Meaning captured |
 |---|---|
 | `"USB-C charging cable 2m black"` | cable / USB-C / length / color |
 | `"ergonomic mesh office chair"` | seating / ergonomic / mesh |
@@ -204,45 +206,25 @@ Every value is converted to a vector. No API call — pure math, milliseconds.
 | `"CHAIR-MESH-ERG-ADJUSTABLE"` | seating / mesh / ergonomic |
 | `"MON-27-4K-IPS-HDMI2"` | display / 27in / 4K |
 
-### Step 2 — FAISS retrieves top-K candidates (no LLM)
+### Step 2 — FAISS retrieves top-K candidates per row (no LLM)
 
-For each left row, faiss finds the `top_k` closest right vectors by cosine similarity. Everything else is eliminated — no LLM call needed.
+For each left row, FAISS finds the `top_k` closest right vectors. Everything else is eliminated — no LLM call needed.
 
 **Query: `"USB-C charging cable 2m black"` → top_k=3**
 
 | Rank | Candidate | Embed Score | Reaches LLM? |
 |---:|---|---:|---|
-| 0 | `CABLE-USBC-200CM-BLK` | 0.89 | ✓ yes |
-| 1 | `CABLE-USBA-200CM-BLK` | 0.71 | ✓ yes |
-| 2 | `CHAIR-TASK-FIXED-BLK` | 0.34 | ✓ yes (shares "BLK") |
-| — | `CHAIR-MESH-ERG-ADJUSTABLE` | 0.11 | ✗ eliminated |
-| — | `MON-27-4K-IPS-HDMI2` | 0.08 | ✗ eliminated |
-
-**Query: `"ergonomic mesh office chair"` → top_k=3**
-
-| Rank | Candidate | Embed Score | Reaches LLM? |
-|---:|---|---:|---|
-| 0 | `CHAIR-MESH-ERG-ADJUSTABLE` | 0.91 | ✓ yes |
-| 1 | `CHAIR-TASK-FIXED-BLK` | 0.74 | ✓ yes |
-| 2 | `CABLE-USBC-200CM-BLK` | 0.19 | ✓ yes |
-| — | `MON-27-4K-IPS-HDMI2` | 0.06 | ✗ eliminated |
-| — | `CABLE-USBA-200CM-BLK` | 0.14 | ✗ eliminated |
-
-**Query: `"27-inch 4K monitor"` → top_k=3**
-
-| Rank | Candidate | Embed Score | Reaches LLM? |
-|---:|---|---:|---|
-| 0 | `MON-27-4K-IPS-HDMI2` | 0.94 | ✓ yes |
-| 1 | `CABLE-USBC-200CM-BLK` | 0.22 | ✓ yes |
-| 2 | `CHAIR-TASK-FIXED-BLK` | 0.17 | ✓ yes |
-| — | `CHAIR-MESH-ERG-ADJUSTABLE` | 0.09 | ✗ eliminated |
-| — | `CABLE-USBA-200CM-BLK` | 0.12 | ✗ eliminated |
+| 0 | `CABLE-USBC-200CM-BLK` | 0.89 | yes |
+| 1 | `CABLE-USBA-200CM-BLK` | 0.71 | yes |
+| 2 | `CHAIR-TASK-FIXED-BLK` | 0.34 | yes (shares "BLK") |
+| — | `CHAIR-MESH-ERG-ADJUSTABLE` | 0.11 | eliminated |
+| — | `MON-27-4K-IPS-HDMI2` | 0.08 | eliminated |
 
 **Result: 3 LLM calls instead of 3 × 5 = 15 pair-by-pair calls.**
 
 ### Step 3 — One LLM call per left row scores all candidates
 
-All top-K candidates go into a single prompt. LLM returns a JSON array — one API call, all candidates scored.
+All top-K candidates go into a single prompt. The LLM scores each one and returns JSON — one API call per row, all candidates scored together.
 
 **Prompt sent for `"USB-C charging cable 2m black"`:**
 ```
@@ -269,9 +251,9 @@ Score each candidate (0.0–1.0):
 
 | Candidate | LLM Score | Decision |
 |---|---:|---|
-| `CABLE-USBC-200CM-BLK` | 0.97 | ✓ **best match — joined** |
-| `CABLE-USBA-200CM-BLK` | 0.38 | ✗ below threshold |
-| `CHAIR-TASK-FIXED-BLK` | 0.04 | ✗ below threshold |
+| `CABLE-USBC-200CM-BLK` | 0.97 | best match — joined |
+| `CABLE-USBA-200CM-BLK` | 0.38 | below threshold |
+| `CHAIR-TASK-FIXED-BLK` | 0.04 | below threshold |
 
 ### Step 4 — Merge matched rows
 
@@ -285,76 +267,86 @@ print(result)
 | ergonomic mesh office chair | 30 | CHAIR-MESH-ERG-ADJUSTABLE | 349.00 |
 | 27-inch 4K monitor | 12 | MON-27-4K-IPS-HDMI2 | 429.00 |
 
-The LLM correctly rejected `CABLE-USBA-200CM-BLK` (wrong connector) even though embedding scored it 0.71 — this is the case where LLM reasoning earns its cost.
+The LLM correctly rejected `CABLE-USBA-200CM-BLK` (wrong connector) even though the embedding scored it 0.71. That's where the LLM earns its cost.
 
 ---
 
 ## Cost & Scale
 
-### The problem with naive LLM joins
-
 If you sent every possible pair to the LLM:
 
-| Left rows | Right rows | Pairs to score | Cost (gpt-4o-mini ~$0.30/1M tokens) |
-|-----------|------------|----------------|--------------------------------------|
+| Left rows | Right rows | Pairs to score | Cost (gpt-4o-mini) |
+|-----------|------------|----------------|---------------------|
 | 1,000 | 10,000 | 10,000,000 | ~$150 |
 | 10,000 | 100,000 | 1,000,000,000 | ~$15,000 |
-| 100,000 | 1,000,000 | 100,000,000,000 | impossible |
+| 100,000 | 1,000,000 | 100,000,000,000 | not feasible |
 
-**llm-join solves this with a two-stage pipeline.**
+llm-join avoids this with a two-stage pipeline.
 
-### Stage 1: Embeddings narrow the search (cheap)
+### Stage 1 — Embeddings narrow the search (cheap)
 
-Convert every value to a vector. Use faiss to find the top-K most similar candidates per row. This is pure math — no API calls, runs in milliseconds.
+FAISS finds the top-K most similar candidates per row. Pure math, no API calls, runs in milliseconds.
 
 | | |
 |---|---|
 | Input pairs | 10,000 × 100,000 = **1,000,000,000** |
-| After embed + faiss (`top_k=5`) | **50,000** candidate pairs |
+| After FAISS (`top_k=5`) | **50,000** candidate pairs |
 | Eliminated for free | **99.995%** of all pairs |
 
-### Stage 2: LLM scores only the hard cases (accurate)
+### Stage 2 — LLM scores only the shortlist (accurate)
 
-Your LLM sees a small batch of plausible candidates per row — not the full cross product. It scores each candidate; the highest score above `threshold` wins.
-
-Query: `"USB-C charging cable 2m black"`
-
-| Rank | Candidate | LLM Score | Decision |
-|---:|---|---:|---|
-| 0 | `CABLE-USBC-200CM-BLK` | 0.97 | ✓ **best match — joined** |
-| 1 | `CABLE-USBC-100CM-BLK` | 0.71 | scored, not selected (wrong length) |
-| 2 | `CABLE-USBA-200CM-BLK` | 0.38 | scored, not selected (wrong connector) |
-| 3 | `CHAIR-TASK-FIXED-BLK` | 0.04 | ✗ below threshold |
-| 4 | `MON-27-4K-IPS-HDMI2` | 0.01 | ✗ below threshold |
-
-### Real cost example
+Your LLM sees a small batch of plausible candidates — not the full cross product. One call per left row, all candidates scored in that call.
 
 | Setup | LLM calls | Estimated cost |
 |-------|-----------|----------------|
 | 10k × 100k, top_k=5 | 50,000 | ~$0.75 |
 | 10k × 100k, top_k=3 | 30,000 | ~$0.45 |
-| 10k × 100k, embed_threshold=0.95 | ~5,000 (obvious matches skip LLM) | ~$0.08 |
+| 10k × 100k, embed_threshold=0.95 | ~5,000 | ~$0.08 |
 
-### Further cost controls
+### Cost controls
 
 ```python
 result = fuzzy_join(
     df1, df2,
     left_on="vendor", right_on="supplier",
-    llm=my_llm,
-    embed_fn=my_embed,
+    llm=my_llm, embed_fn=my_embed,
     context="...",
-    top_k=3,                # fewer candidates = fewer LLM tokens per row
-    embed_threshold=0.95,   # skip LLM entirely if embedding match score > 0.95
-    max_llm_calls=1000,     # hard cap — warns and returns partial result if hit
+    llm_concurrency=10,
+    top_k=3,               # fewer candidates = fewer LLM tokens per row
+    embed_threshold=0.95,  # skip LLM entirely if embed score is high enough
+    max_llm_calls=1000,    # hard cap — warns and stops if hit
 )
 ```
 
-| Parameter | Effect |
-|-----------|--------|
-| `top_k=3` (default 5) | 40% fewer LLM tokens |
-| `embed_threshold=0.95` | Skip LLM for obvious matches — typically saves 30–60% |
-| `max_llm_calls=N` | Budget guard — never exceeds N LLM calls |
+---
+
+## Performance
+
+`llm_concurrency` is a required parameter. You choose how many LLM calls run in parallel based on your API rate limit.
+
+```python
+# Sequential — use for debugging or if you have strict rate limits
+fuzzy_join(..., llm_concurrency=1)
+
+# Good starting point for most APIs
+fuzzy_join(..., llm_concurrency=10)
+
+# High throughput — check your rate limits first
+fuzzy_join(..., llm_concurrency=50)
+```
+
+| API | Suggested concurrency |
+|-----|-----------------------|
+| OpenAI (tier 2+) | 20–50 |
+| Azure OpenAI | 10–30 |
+| Anthropic | 5–20 |
+| Ollama (local) | as high as your machine allows |
+
+**How it works under the hood:**
+- Sync LLM function (`def my_llm`) → uses `ThreadPoolExecutor`
+- Async LLM function (`async def my_llm`) → uses `asyncio` with a semaphore
+
+Both paths have automatic embed fallback — if an LLM call fails after all retries, the top embedding match is used instead.
 
 ---
 
@@ -370,10 +362,13 @@ result = fuzzy_join(
     llm=my_llm,
     embed_fn=my_embed,
     context="procurement — match buyer product descriptions to supplier SKU codes",
+    llm_concurrency=10,
 )
 ```
 
 ### With domain context
+
+Give the LLM more detail about each column to improve accuracy.
 
 ```python
 result = fuzzy_join(
@@ -387,6 +382,7 @@ result = fuzzy_join(
         "product_name": "plain English product description written by a buyer",
         "sku": "supplier stock-keeping unit code, typically uppercase with hyphens",
     },
+    llm_concurrency=10,
 )
 ```
 
@@ -400,15 +396,18 @@ result = fuzzy_join(
     llm=my_llm,
     embed_fn=my_embed,
     context="company names — match legal entity variants",
+    llm_concurrency=10,
     return_reasoning=True,
 )
 
-print(result[["vendor", "supplier_name", "_llm_score", "_llm_reasoning", "_embed_rank", "_match_method"]])
+print(result[["vendor", "supplier_name", "_llm_score", "_llm_reasoning", "_match_method", "_llm_candidates"]])
 ```
 
-| vendor | supplier_name | _llm_score | _llm_reasoning | _embed_rank | _match_method |
-|---|---|---:|---|---:|---|
-| Goldman Sachs & Co. | The Goldman Sachs Group Inc | 0.97 | same firm, legal name variant | 0 | llm |
+| vendor | supplier_name | _llm_score | _llm_reasoning | _match_method | _llm_candidates |
+|---|---|---:|---|---|---|
+| Goldman Sachs & Co. | The Goldman Sachs Group Inc | 0.97 | same firm, legal name variant | llm | [{"candidate": "The Goldman Sachs...", "embed_score": 0.94}, ...] |
+
+`_llm_candidates` shows exactly which candidates were sent to the LLM and their embedding scores — useful for tuning `top_k` and `threshold`.
 
 ### Control cost
 
@@ -420,15 +419,16 @@ result = fuzzy_join(
     llm=my_llm,
     embed_fn=my_embed,
     context="company names — match legal entity variants",
-    embed_threshold=0.95,   # skip LLM if embedding match is obvious
-    max_llm_calls=500,      # hard cap — warns and returns partial result if hit
-    top_k=3,                # fewer candidates = fewer LLM tokens
+    llm_concurrency=10,
+    embed_threshold=0.95,  # skip LLM if embedding match is strong enough
+    max_llm_calls=500,     # hard cap — warns and returns partial result if hit
+    top_k=3,               # fewer candidates = fewer LLM tokens
 )
 ```
 
 ### Left join (audit unmatched rows)
 
-`how="left"` keeps all left rows — unmatched ones get NaN right columns. Useful to see what failed to match.
+`how="left"` keeps all left rows. Unmatched ones get NaN in the right columns — useful for finding what failed to match.
 
 ```python
 result = fuzzy_join(
@@ -436,29 +436,54 @@ result = fuzzy_join(
     left_on="vendor", right_on="supplier_name",
     llm=my_llm, embed_fn=my_embed,
     context="company names — match legal entity variants",
+    llm_concurrency=10,
     how="left",
 )
 
 unmatched = result[result["supplier_name"].isna()]
 ```
 
-> **Note:** `how="outer"` is useful for reconciliation — unmatched left rows are values with no match above threshold; unmatched right rows are values never selected as a best match. `cross` join is not supported (it would be the naive O(n×m) approach llm-join is designed to avoid).
+> `how="outer"` is useful for reconciliation — unmatched left rows have no match above threshold; unmatched right rows were never selected as a best match.
 
 ### Multi-column join key
 
-```python
-# orders_df has separate "product_name" and "category" columns
-# catalog_df has a single "sku_description" column
+Pass a list to `left_on` or `right_on` — values are concatenated automatically. Works for any number of columns.
 
+```python
+# Match on product name + category combined
 result = fuzzy_join(
     orders_df, catalog_df,
-    left_on=["product_name", "category"],   # concatenated into one key
+    left_on=["product_name", "category"],
     right_on="sku_description",
     llm=my_llm,
     embed_fn=my_embed,
     context="procurement — match buyer product + category to supplier SKU description",
+    llm_concurrency=10,
 )
 ```
+
+### Match all results
+
+By default, only the best-scoring match above threshold is returned. Set `match_all=True` when one left value legitimately maps to multiple right values.
+
+```python
+# "aspirin" should match all its known names
+result = fuzzy_join(
+    drugs_df, synonyms_df,
+    left_on="generic_name", right_on="name",
+    llm=my_llm, embed_fn=my_embed,
+    context="pharmaceutical drug names — match generics to all known synonyms",
+    llm_concurrency=10,
+    match_all=True,
+    top_k=10,
+)
+```
+
+| generic_name | name | _llm_score |
+|---|---|---:|
+| aspirin | acetylsalicylic acid | 0.98 |
+| aspirin | Bayer Aspirin Tablet | 0.95 |
+| aspirin | aspirin 100mg tablet | 0.91 |
 
 ### Chaining multiple joins
 
@@ -471,13 +496,9 @@ step1 = fuzzy_join(
     left_on="vendor", right_on="supplier_name",
     llm=my_llm, embed_fn=my_embed,
     context="company names — match legal entity variants",
+    llm_concurrency=10,
     how="left", return_reasoning=True,
 )
-step1 = step1.rename(columns={
-    "_llm_score": "_vendor_score",
-    "_llm_reasoning": "_vendor_reasoning",
-    "_match_method": "_vendor_method",
-})
 
 # Step 2 — match products on result of step 1
 result = fuzzy_join(
@@ -485,6 +506,7 @@ result = fuzzy_join(
     left_on="product", right_on="catalog_item",
     llm=my_llm, embed_fn=my_embed,
     context="product names — match internal descriptions to catalog items",
+    llm_concurrency=10,
     how="left", return_reasoning=True,
 )
 ```
@@ -499,36 +521,41 @@ Pass any callable that takes a prompt string and returns a string.
 # OpenAI
 import openai
 client = openai.OpenAI()
-llm = lambda p: client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": p}]
-).choices[0].message.content
+def my_llm(prompt):
+    return client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    ).choices[0].message.content
 
 # Anthropic
 import anthropic
 client = anthropic.Anthropic()
-llm = lambda p: client.messages.create(
-    model="claude-opus-4-5", max_tokens=512,
-    messages=[{"role": "user", "content": p}]
-).content[0].text
+def my_llm(prompt):
+    return client.messages.create(
+        model="claude-opus-4-5", max_tokens=512,
+        messages=[{"role": "user", "content": prompt}]
+    ).content[0].text
 
 # Google Gemini
 import google.generativeai as genai
 model = genai.GenerativeModel("gemini-2.0-flash")
-llm = lambda p: model.generate_content(p).text
+def my_llm(prompt):
+    return model.generate_content(prompt).text
 
 # Ollama (local, free)
 import ollama
-llm = lambda p: ollama.chat(
-    model="llama3.2", messages=[{"role": "user", "content": p}]
-)["message"]["content"]
+def my_llm(prompt):
+    return ollama.chat(
+        model="llama3.2", messages=[{"role": "user", "content": prompt}]
+    )["message"]["content"]
 
-# Any custom endpoint
-import requests
-llm = lambda p: requests.post(
-    "https://your-llm-api.com/chat",
-    json={"prompt": p}
-).json()["response"]
+# Async LLM (uses asyncio path automatically)
+async def my_llm(prompt):
+    response = await async_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
 ```
 
 ---
@@ -554,20 +581,11 @@ def my_embed(texts):
     response = co.embed(texts=texts, model="embed-english-v3.0", input_type="search_document")
     return np.array(response.embeddings, dtype="float32")
 
-# sentence-transformers (local, no API key)
+# sentence-transformers (local, no API key needed)
 from sentence_transformers import SentenceTransformer
 model = SentenceTransformer("all-MiniLM-L6-v2")
 def my_embed(texts):
     return model.encode(texts, convert_to_numpy=True).astype("float32")
-
-# Any custom endpoint
-import requests
-def my_embed(texts):
-    response = requests.post(
-        "https://your-embed-api.com/embed",
-        json={"texts": texts}
-    ).json()
-    return np.array(response["embeddings"], dtype="float32")
 ```
 
 ---
@@ -575,21 +593,22 @@ def my_embed(texts):
 ## Features
 
 - **Semantic matching** — joins on meaning, not character similarity
-- **Two-stage pipeline** — embeddings eliminate 99%+ of candidates cheaply; LLM scores only the hard cases
-- **Domain context injection** — `context` and `column_context` tell the LLM what the columns represent, improving accuracy
-- **Bring-your-own LLM** — any callable `(str) -> str`; works with OpenAI, Anthropic, Gemini, Ollama, or any custom endpoint
-- **Bring-your-own embeddings** — any callable `(list[str]) -> np.ndarray`; works with any embedding model or API
-- **Full join semantics** — `inner`, `left`, `right`, `outer` — same API as `pd.merge`
-- **Multi-column join keys** — pass a list to `left_on` / `right_on`; values are concatenated automatically
-- **Tie handling** — when multiple candidates score equally, all are returned (correct join semantics)
-- **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` columns
-- **Embed threshold shortcut** — `embed_threshold` skips LLM entirely for obvious matches, saving cost
-- **Embed fallback** — if LLM fails all retries, falls back to top embed candidate automatically (`_match_method="embed_fallback"`)
-- **Cost controls** — `top_k`, `embed_threshold`, `max_llm_calls` give full budget control
-- **Multi-match mode** — `match_all=True` returns every candidate above threshold when one left value maps to multiple right values
-- **Parallel LLM calls** — `llm_concurrency=N` runs N LLM calls simultaneously via threads (sync) or asyncio semaphore (async), with automatic embed fallback on failure
-- **Retry with backoff** — `max_retries` retries failed LLM calls with exponential backoff (1s, 2s, 4s…)
-- **MIT license** — use in commercial projects without restriction
+- **Two-stage pipeline** — embeddings cut 99%+ of candidates; LLM scores only the plausible ones
+- **Domain context** — `context` and `column_context` tell the LLM what the columns mean, improving accuracy
+- **Bring your own LLM** — any callable `(str) -> str`; sync or async
+- **Bring your own embeddings** — any callable `(list[str]) -> np.ndarray`
+- **Full join semantics** — `inner`, `left`, `right`, `outer` — same as `pd.merge`
+- **Multi-column join keys** — pass a list to `left_on` / `right_on`; any number of columns
+- **Tie handling** — when candidates score equally, all are returned (correct SQL join behavior)
+- **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`
+- **Debug candidates** — `_llm_candidates` shows exactly what was sent to the LLM with embed scores, for tuning
+- **Embed threshold shortcut** — `embed_threshold` skips LLM for obvious matches
+- **Embed fallback** — if LLM fails all retries, top embed candidate is used automatically
+- **Cost controls** — `top_k`, `embed_threshold`, `max_llm_calls`
+- **Multi-match mode** — `match_all=True` returns all candidates above threshold
+- **Parallel LLM calls** — `llm_concurrency` runs multiple LLM calls at once
+- **Retry with backoff** — failed LLM calls retry with exponential backoff (1s, 2s, 4s…)
+- **MIT license**
 
 ---
 
@@ -597,22 +616,22 @@ def my_embed(texts):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `left_on` | required | Column name(s) in df1. Pass a list for multi-column keys. |
-| `right_on` | required | Column name(s) in df2. Pass a list for multi-column keys. |
-| `llm` | required | Callable `(prompt: str) -> str` — your LLM function |
-| `embed_fn` | required | Callable `(list[str]) -> np.ndarray` — your embedding function |
-| `context` | required | Domain context injected into LLM prompt — describe what the columns represent and what kind of match to make |
-| `column_context` | `{}` | Per-column context dict `{"col": "description"}` — adds column-level detail to the prompt |
-| `top_k` | `5` | Number of embedding candidates retrieved per left row before LLM scoring |
-| `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. Scores below this are rejected. |
-| `how` | `"inner"` | Join type: `inner` (matched pairs only) / `left` (all left rows) / `right` (all right rows) / `outer` (all rows both sides) |
-| `embed_threshold` | `None` | If set, skip LLM when top embed score ≥ this value — match accepted as-is |
-| `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns partial result if hit. |
-| `max_retries` | `3` | Retry failed LLM calls with exponential backoff (1s, 2s, 4s…). Set `0` to disable. On full failure, falls back to top embed candidate. |
-| `batch_size` | `32` | Embedding batch size for `embed_fn` calls |
-| `return_reasoning` | `False` | Append debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method` (`"llm"` / `"embed_threshold"` / `"embed_fallback"`), `_llm_candidates` |
-| `match_all` | `False` | Return **all** candidates above `threshold`, not just the best scorer. Use when one left value legitimately maps to multiple right values (e.g. `"aspirin"` → `"acetylsalicylic acid"`, `"Bayer Aspirin Tablet"`, `"aspirin 100mg tablet"`). |
-| `llm_concurrency` | required | Number of parallel LLM calls. `1` = sequential. Set to `10`–`50` to match your API rate limit. Sync LLMs use `ThreadPoolExecutor`; async LLMs use `asyncio` with a semaphore. Works in Databricks and Jupyter. |
+| `left_on` | required | Column name(s) in df1. Pass a list for multi-column keys — any number of columns supported. |
+| `right_on` | required | Column name(s) in df2. Pass a list for multi-column keys — any number of columns supported. |
+| `llm` | required | Your LLM function. Sync: `(str) -> str`. Async: `async (str) -> str`. |
+| `embed_fn` | required | Your embedding function. `(list[str]) -> np.ndarray` of shape `[n, dim]`, dtype `float32`. |
+| `context` | required | Describe what the columns represent and what kind of match to make. Injected into every LLM prompt. |
+| `llm_concurrency` | required | How many LLM calls to run in parallel. `1` = sequential. Start with `10` and adjust based on your API rate limit. |
+| `column_context` | `{}` | Per-column descriptions `{"col": "description"}` — adds extra detail to the prompt beyond `context`. |
+| `top_k` | `5` | How many embedding candidates to retrieve per left row before LLM scoring. |
+| `threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. |
+| `how` | `"inner"` | Join type: `inner` / `left` / `right` / `outer` — same as `pd.merge`. |
+| `embed_threshold` | `None` | If set, skip LLM when top embed score is at or above this value. |
+| `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
+| `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |
+| `batch_size` | `32` | Batch size for `embed_fn` calls. |
+| `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
+| `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
 
 ---
 
