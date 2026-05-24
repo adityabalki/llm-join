@@ -97,14 +97,14 @@ class TestContext:
 
 class TestLlmThreshold:
     def test_low_threshold_matches_all(self):
-        # mock_llm returns 0.95; 0.95 >= 0.01 → 2 left × 2 candidates = 4 rows
+        # mock_llm returns 0.95; 0.95 >= 0.01 → eligible, but match_all=False → ONE match per left row
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
             llm=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=2, llm_threshold=0.01,
             how="inner", llm_concurrency=1,
         )
-        assert len(result) == 4
+        assert len(result) == 2
 
     def test_high_threshold_matches_nothing(self):
         # mock_llm returns 0.95; 0.95 < 1.0 → no matches

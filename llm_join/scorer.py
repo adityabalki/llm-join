@@ -155,23 +155,16 @@ class LLMScorer:
                 for score, idx, reasoning in scored
             ]
 
-        # Default: return only best score + ties at that score
+        # Default: exactly ONE result — best score, break ties by embed rank (lowest idx = top FAISS hit)
         best_score = max(s for s, _, _ in scored)
-        tied = [(idx, reasoning) for score, idx, reasoning in scored if score == best_score]
-
-        # Annotate reasoning when multiple candidates tie — visible in return_reasoning output
-        tie_note = (
-            f" [tied: {len(tied)} candidates scored {best_score} — all joined]"
-            if len(tied) > 1 else ""
+        best_idx, best_reasoning = min(
+            ((idx, reasoning) for score, idx, reasoning in scored if score == best_score),
+            key=lambda x: x[0],
         )
-
-        return [
-            MatchResult(
-                left_val=left_val,
-                right_val=candidates[idx],
-                score=best_score,
-                reasoning=reasoning + tie_note,
-                embed_rank=idx,
-            )
-            for idx, reasoning in tied
-        ]
+        return [MatchResult(
+            left_val=left_val,
+            right_val=candidates[best_idx],
+            score=best_score,
+            reasoning=best_reasoning,
+            embed_rank=best_idx,
+        )]

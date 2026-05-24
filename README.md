@@ -1,5 +1,7 @@
 # llm-join
 
+[![PyPI](https://img.shields.io/pypi/v/llm-join)](https://pypi.org/project/llm-join/) [![GitHub](https://img.shields.io/badge/GitHub-adityabalki%2Fllm--join-blue?logo=github)](https://github.com/adityabalki/llm-join)
+
 > **README is a work in progress** — more examples and documentation coming soon.
 
 **The pandas join that understands what your data means.**
@@ -78,6 +80,8 @@ Fast and cheap, but no reasoning. Can't explain why two values match or catch fa
 ### llm-join
 Embeddings narrow down candidates (fast, cheap). LLM makes the final call with your context (accurate). You get the best of both.
 
+**Enterprise-ready by design:** you bring your own LLM and embedding provider. OpenAI, Azure, Anthropic, Bedrock, Ollama, or any private model — llm-join doesn't care. No data leaves your infrastructure beyond what your own providers see. No vendor lock-in, no SaaS dependency, no API keys stored anywhere.
+
 ---
 
 ## Real-World Use Cases
@@ -93,7 +97,8 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with y
 | **Research** | Author name | Citation database | Disambiguate authors |
 | **Government** | Vendor name | Tax registry | Consolidate procurement spend |
 | **Real estate** | Raw address input | Property records DB | Standardize and match addresses |
-| **Pharma HR** | Medical Science Liaison roster (Veeva CRM) | Employee master (Workday) | Reconcile field medical staff assignments across CRM and HR for compliance audits — same person recorded as "Dr. Sarah J. Connor, MSL" in one system and "Connor, S." in the other |
+| **Pharma** | Investigator names in trial protocols (ICF) | CTMS investigator registry | Link Principal Investigators across regulatory submissions and site management systems — same doctor listed as "Dr. A. Sharma, MD" in one system and "Amit Sharma" in another |
+| **HR** | Employee free-text skills profiles | Competency framework / role catalog | Match employee capabilities to role requirements for talent mobility, succession planning, and L&D targeting |
 
 ---
 
@@ -593,14 +598,15 @@ def my_embed(texts):
 
 ## Features
 
+- **Enterprise-ready** — you supply the LLM and embedding calls. Works with any provider: OpenAI, Azure OpenAI, Anthropic, AWS Bedrock, Google Vertex, Ollama, or any private on-premise model. No vendor lock-in. Your data stays within your own infrastructure and chosen providers.
 - **Semantic matching** — joins on meaning, not character similarity
 - **Two-stage pipeline** — embeddings cut 99%+ of candidates; LLM scores only the plausible ones
 - **Domain context** — `context` and `column_context` tell the LLM what the columns mean, improving accuracy
 - **Bring your own LLM** — any callable `(str) -> str`; sync or async
 - **Bring your own embeddings** — any callable `(list[str]) -> np.ndarray`
-- **Full join semantics** — `inner`, `left`, `right`, `outer` — same as `pd.merge`
+- **Full join semantics** — `inner`, `left`, `right`, `full` — same as `pd.merge`
 - **Multi-column join keys** — pass a list to `left_on` / `right_on`; any number of columns
-- **Tie handling** — when candidates score equally, all are returned (correct SQL join behavior)
+- **No duplicate output rows** — each left row gets exactly one best match; ties broken by embedding rank
 - **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`
 - **Debug candidates** — `_llm_candidates` shows exactly what was sent to the LLM with embed scores, for tuning
 - **Embed skip shortcut** — `embed_skip_threshold` skips LLM when embed similarity is high enough (default 1.0 = only exact matches skip)
@@ -626,7 +632,7 @@ def my_embed(texts):
 | `column_context` | `{}` | Per-column descriptions `{"col": "description"}` — adds extra detail to the prompt beyond `context`. |
 | `top_k` | `5` | How many embedding candidates to retrieve per left row before LLM scoring. |
 | `llm_threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. Rows where LLM scores below this are not joined. |
-| `how` | `"inner"` | Join type: `inner` / `left` / `right` / `outer` — same as `pd.merge`. |
+| `how` | `"inner"` | Join type: `inner` / `left` / `right` / `full` (full outer join). |
 | `embed_skip_threshold` | `1.0` | Skip LLM when top embed similarity is at or above this value. Default `1.0` means only identical vectors (exact same text) skip LLM. Lower it (e.g. `0.92`) to skip LLM for near-identical matches and save cost. |
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
 | `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |

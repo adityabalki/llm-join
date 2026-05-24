@@ -72,8 +72,8 @@ def test_return_reasoning_adds_score_column():
     assert "_llm_reasoning" in result.columns
 
 def test_threshold_low_matches_everything():
-    # threshold=0.01 → all top_k=2 candidates score 0.95 (tied) → both match each left row
-    # 2 left rows × 2 right rows = 4 output rows (join semantics on non-unique matches)
+    # llm_threshold=0.01 → candidates eligible, but match_all=False (default) → ONE match per left row
+    # 2 left rows → 2 output rows (no tie expansion)
     result = fuzzy_join(
         DF1, DF2,
         left_on="drug", right_on="brand",
@@ -85,7 +85,7 @@ def test_threshold_low_matches_everything():
         how="inner",
         llm_concurrency=1,
     )
-    assert len(result) == 4
+    assert len(result) == 2
 
 def test_threshold_one_matches_nothing():
     # mock llm returns 0.95, threshold=1.0 should filter all

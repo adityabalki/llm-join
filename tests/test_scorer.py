@@ -65,7 +65,8 @@ def test_embed_rank_set_correctly():
     assert result[0].embed_rank == 1  # index 1 had the best score
 
 
-def test_tied_matches_all_returned():
+def test_tied_returns_one_result_best_embed_rank():
+    # Two candidates tied at 0.90 — match_all=False → return exactly ONE (lowest index = best embed rank)
     resp = valid_response([
         {"score": 0.90, "reasoning": "match A"},
         {"score": 0.90, "reasoning": "match B"},
@@ -73,9 +74,9 @@ def test_tied_matches_all_returned():
     ])
     scorer = LLMScorer(make_llm(resp))
     result = scorer.score("Goldman Sachs & Co.", ["Entity A", "Entity B", "Entity C"], "company names")
-    assert len(result) == 2  # both tied at 0.90
-    assert all(r.score == 0.90 for r in result)
-    assert "[tied:" in result[0].reasoning
+    assert len(result) == 1          # exactly one result, no tie expansion
+    assert result[0].score == 0.90
+    assert result[0].right_val == "Entity A"  # index 0 wins tie-break (best embed rank)
 
 
 def test_duplicate_index_deduplicated():

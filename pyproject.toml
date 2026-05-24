@@ -16,9 +16,6 @@ dependencies = [
     "faiss-cpu>=1.8,<1.14",
 ]
 
-[project.optional-dependencies]
-sentence-transformers = ["sentence-transformers>=2.2"]
-
 [tool.hatch.build.targets.wheel]
 packages = ["llm_join"]
 

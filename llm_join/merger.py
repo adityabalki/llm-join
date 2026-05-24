@@ -65,4 +65,7 @@ class Merger:
                 errors="ignore",
             )
 
-        return result.reset_index(drop=True)
+        # Drop fully identical rows — safety net for any remaining duplicates.
+        # Exclude _llm_candidates (contains lists, unhashable for dedup).
+        dedup_cols = [c for c in result.columns if c != "_llm_candidates"]
+        return result.drop_duplicates(subset=dedup_cols).reset_index(drop=True)
