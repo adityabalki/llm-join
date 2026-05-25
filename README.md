@@ -604,7 +604,7 @@ def my_embed(texts):
 | `embed_skip_threshold` | `1.0` | Skip LLM when top embed similarity is at or above this value. Default `1.0` means only identical vectors (exact same text) skip LLM. Lower it (e.g. `0.92`) to skip LLM for near-identical matches and save cost. |
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
 | `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |
-| `batch_size` | `32` | Batch size for `embed_fn` calls. |
+| `batch_size` | `32` | How many texts sent to `embed_fn` per call. Only affects embedding speed, not LLM. Raise to 256-1024 for large datasets if your embedding provider supports it (OpenAI accepts up to 2048). |
 | `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
 | `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
 
