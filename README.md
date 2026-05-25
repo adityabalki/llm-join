@@ -2,8 +2,6 @@
 
 [![PyPI](https://img.shields.io/pypi/v/llm-join)](https://pypi.org/project/llm-join/) [![GitHub](https://img.shields.io/badge/GitHub-adityabalki%2Fllm--join-blue?logo=github)](https://github.com/adityabalki/llm-join)
 
-> **README is a work in progress** — more examples and documentation coming soon.
-
 **The pandas join that understands what your data means.**
 
 `pd.merge` joins on exact values. `llm-join` joins on meaning — using embeddings to find candidates and an LLM you already have to decide if they match.
