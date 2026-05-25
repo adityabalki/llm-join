@@ -76,9 +76,9 @@ Character similarity, not meaning. `"iPhone 14 Pro"` vs `"iPhone 14 Pro Max"` sc
 Fast and cheap, but no reasoning. Can't explain why two values match or catch false positives confidently.
 
 ### llm-join
-Embeddings narrow down candidates (fast, cheap). LLM makes the final call with your context (accurate). You get the best of both.
+Embeddings narrow the field cheaply. Your model scores only the plausible candidates — with context you provide. Accurate where it matters, fast where it doesn't.
 
-**Enterprise-ready by design:** you bring your own LLM and embedding provider. OpenAI, Azure, Anthropic, Bedrock, Ollama, or any private model — llm-join doesn't care. No data leaves your infrastructure beyond what your own providers see. No vendor lock-in, no SaaS dependency, no API keys stored anywhere.
+**Works with any provider:** OpenAI, Azure, Anthropic, Bedrock, Ollama, or any private model. No data leaves your infrastructure beyond what your own providers already see.
 
 ---
 
@@ -326,7 +326,7 @@ result = fuzzy_join(
 
 ## Performance
 
-`llm_concurrency` is a required parameter. You choose how many LLM calls run in parallel based on your API rate limit.
+Set `llm_concurrency` based on your API rate limit.
 
 ```python
 # Sequential — use for debugging or if you have strict rate limits
@@ -346,11 +346,10 @@ fuzzy_join(..., llm_concurrency=50)
 | Anthropic | 5–20 |
 | Ollama (local) | as high as your machine allows |
 
-**How it works under the hood:**
-- Sync LLM function (`def my_llm`) → uses `ThreadPoolExecutor`
-- Async LLM function (`async def my_llm`) → uses `asyncio` with a semaphore
+- Sync function (`def my_llm`) → `ThreadPoolExecutor`
+- Async function (`async def my_llm`) → `asyncio` + semaphore
 
-Both paths have automatic embed fallback — if an LLM call fails after all retries, the top embedding match is used instead.
+If a call fails after all retries, the top embedding match is used as fallback.
 
 ---
 
@@ -447,7 +446,7 @@ result = fuzzy_join(
 unmatched = result[result["supplier_name"].isna()]
 ```
 
-> `how="outer"` is useful for reconciliation — unmatched left rows have no match above threshold; unmatched right rows were never selected as a best match.
+> `how="full"` is useful for reconciliation — unmatched left rows have no match above threshold; unmatched right rows were never selected as a best match.
 
 ### Multi-column join key
 
@@ -596,23 +595,17 @@ def my_embed(texts):
 
 ## Features
 
-- **Enterprise-ready** — you supply the LLM and embedding calls. Works with any provider: OpenAI, Azure OpenAI, Anthropic, AWS Bedrock, Google Vertex, Ollama, or any private on-premise model. No vendor lock-in. Your data stays within your own infrastructure and chosen providers.
-- **Semantic matching** — joins on meaning, not character similarity
-- **Two-stage pipeline** — embeddings cut 99%+ of candidates; LLM scores only the plausible ones
-- **Domain context** — `context` and `column_context` tell the LLM what the columns mean, improving accuracy
-- **Bring your own LLM** — any callable `(str) -> str`; sync or async
-- **Bring your own embeddings** — any callable `(list[str]) -> np.ndarray`
+- **Any provider** — OpenAI, Azure, Anthropic, Bedrock, Vertex, Ollama, or any private model. Sync and async supported.
+- **Two-stage pipeline** — embeddings eliminate 99%+ of pairs; your model scores only the shortlist
+- **Domain context** — `context` and `column_context` inject column-level descriptions into every prompt
 - **Full join semantics** — `inner`, `left`, `right`, `full` — same as `pd.merge`
-- **Multi-column join keys** — pass a list to `left_on` / `right_on`; any number of columns
-- **No duplicate output rows** — each left row gets exactly one best match; ties broken by embedding rank
+- **Multi-column keys** — pass a list to `left_on` / `right_on`
+- **No duplicate output rows** — one best match per left row; ties broken by embedding rank
 - **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`
-- **Debug candidates** — `_llm_candidates` shows exactly what was sent to the LLM with embed scores, for tuning
-- **Embed skip shortcut** — `embed_skip_threshold` skips LLM when embed similarity is high enough (default 1.0 = only exact matches skip)
-- **Embed fallback** — if LLM fails all retries, top embed candidate is used automatically
 - **Cost controls** — `top_k`, `embed_skip_threshold`, `max_llm_calls`
 - **Multi-match mode** — `match_all=True` returns all candidates above threshold
-- **Parallel LLM calls** — `llm_concurrency` runs multiple LLM calls at once
-- **Retry with backoff** — failed LLM calls retry with exponential backoff (1s, 2s, 4s…)
+- **Parallel scoring** — `llm_concurrency` controls how many calls run at once
+- **Retry with backoff** — failed calls retry at 1s, 2s, 4s; falls back to top embed match on total failure
 - **MIT license**
 
 ---
