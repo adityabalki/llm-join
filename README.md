@@ -199,7 +199,7 @@ result = fuzzy_join(
 
 ### Step 1 — Embed both columns
 
-Every value gets converted to a vector. No API call pure math, runs in milliseconds.
+Every value gets converted to a vector.
 
 | Value | Meaning captured |
 |---|---|
@@ -212,7 +212,7 @@ Every value gets converted to a vector. No API call pure math, runs in milliseco
 
 ### Step 2 — FAISS retrieves top-K candidates per row (no LLM)
 
-For each left row, FAISS finds the `top_k` closest right vectors. Everything else is eliminated no LLM call needed.
+For each left row, FAISS finds the `top_k` closest right vectors using cosine similarity. Everything else is eliminated no LLM call needed.
 
 **Query: `"USB-C charging cable 2m black"` → top_k=3**
 
@@ -285,7 +285,7 @@ If you sent every possible pair to the LLM:
 | 10,000 | 100,000 | 1,000,000,000 | ~$15,000 |
 | 100,000 | 1,000,000 | 100,000,000,000 | not feasible |
 
-llm-join avoids this with a two-stage pipeline.
+llm-join avoids this with a two stage pipeline.
 
 ### Stage 1 — Embeddings narrow the search (cheap)
 
@@ -383,7 +383,7 @@ result = fuzzy_join(
     context="procurement match buyer product descriptions to supplier SKU codes",
     column_context={
         "product_name": "plain English product description written by a buyer",
-        "sku": "supplier stock-keeping unit code, typically uppercase with hyphens",
+        "sku": "supplier stock keeping unit code, typically uppercase with hyphens",
     },
     llm_concurrency=10,
 )
@@ -581,7 +581,7 @@ def my_embed(texts):
 - **Any provider** — OpenAI, Azure, Anthropic, Bedrock, Vertex, Ollama, or any private model. Sync and async supported.
 - **Enterprise friendly** - User supply the LLM and embedding calls. Your data stays within your own infrastructure and chosen providers.
 - **Two-stage pipeline** — embeddings eliminate 99%+ of pairs; your model scores only the shortlist
-- **Domain context** — `context` and `column_context` inject column-level descriptions into every prompt
+- **Domain context** — `context` and `column_context` inject column level descriptions into every prompt
 - **Full join semantics** — `inner`, `left`, `right`, `full`  same as `pd.merge`
 - **Multi-column keys** — pass a list to `left_on` / `right_on`
 - **No duplicate output rows** — one best match per left row; ties broken by embedding rank
