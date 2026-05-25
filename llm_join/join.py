@@ -80,14 +80,9 @@ def fuzzy_join(
             right_vals.append(v)
     n_right_total = len(df2)
     n_right_unique = len(right_vals)
-    if n_right_unique < n_right_total:
-        warnings.warn(
-            f"llm-join: df2 has {n_right_total - n_right_unique} duplicate right-column values. "
-            f"Deduplicated to {n_right_unique} unique candidates for FAISS. "
-            f"Consider deduplicating df2 before joining to avoid unexpected output rows.",
-            UserWarning,
-            stacklevel=2,
-        )
+    # Note: duplicate right-column values are handled silently. FAISS sees unique
+    # candidates (compute optimization); pandas merge fans out to all matching df2
+    # rows — same behavior as standard pd.merge on duplicate join keys.
 
     # Warn on large scale
     if n_unique > 5_000 and cfg.embed_skip_threshold >= 1.0 and cfg.max_llm_calls is None:
