@@ -412,23 +412,6 @@ print(result[["vendor", "supplier_name", "_llm_score", "_llm_reasoning", "_match
 
 `_llm_candidates` shows exactly which candidates were sent to the LLM and their embedding scores useful for tuning `top_k` and `threshold`.
 
-### Control cost
-
-```python
-result = fuzzy_join(
-    df1, df2,
-    left_on="vendor",
-    right_on="supplier_name",
-    llm=my_llm,
-    embed_fn=my_embed,
-    context="company names — match legal entity variants",
-    llm_concurrency=10,
-    embed_skip_threshold=0.95,  # skip LLM if embedding match is strong enough
-    max_llm_calls=500,          # hard cap — warns and returns partial result if hit
-    top_k=3,               # fewer candidates = fewer LLM tokens
-)
-```
-
 ### Left join (audit unmatched rows)
 
 `how="left"` keeps all left rows. Unmatched ones get NaN in the right columns useful for finding what failed to match.
