@@ -339,13 +339,6 @@ fuzzy_join(..., llm_concurrency=10)
 fuzzy_join(..., llm_concurrency=50)
 ```
 
-| API | Suggested concurrency |
-|-----|-----------------------|
-| OpenAI (tier 2+) | 20–50 |
-| Azure OpenAI | 10–30 |
-| Anthropic | 5–20 |
-| Ollama (local) | as high as your machine allows |
-
 - Sync function (`def my_llm`) → `ThreadPoolExecutor`
 - Async function (`async def my_llm`) → `asyncio` + semaphore
 
@@ -364,7 +357,7 @@ result = fuzzy_join(
     right_on="sku",
     llm=my_llm,
     embed_fn=my_embed,
-    context="procurement — match buyer product descriptions to supplier SKU codes",
+    context="procurement match buyer product descriptions to supplier SKU codes",
     llm_concurrency=10,
 )
 ```
@@ -443,7 +436,7 @@ result = fuzzy_join(
     right_on="sku_description",
     llm=my_llm,
     embed_fn=my_embed,
-    context="procurement — match buyer product + category to supplier SKU description",
+    context="procurement match buyer product + category to supplier SKU description",
     llm_concurrency=10,
 )
 ```
