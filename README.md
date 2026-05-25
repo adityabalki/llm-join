@@ -97,8 +97,8 @@ Embeddings narrow down candidates (fast, cheap). LLM makes the final call with y
 | **Research** | Author name | Citation database | Disambiguate authors |
 | **Government** | Vendor name | Tax registry | Consolidate procurement spend |
 | **Real estate** | Raw address input | Property records DB | Standardize and match addresses |
-| **Pharma** | Investigator names in trial protocols (ICF) | CTMS investigator registry | Link Principal Investigators across regulatory submissions and site management systems — same doctor listed as "Dr. A. Sharma, MD" in one system and "Amit Sharma" in another |
-| **HR** | Employee free-text skills profiles | Competency framework / role catalog | Match employee capabilities to role requirements for talent mobility, succession planning, and L&D targeting |
+| **Pharma** | Drug compound names in adverse event reports | WHO drug dictionary (WHO-DD) | Standardize brand, generic, and abbreviation variants — "Tylenol 500mg", "acetaminophen", "APAP" all resolve to the same WHO entry for pharmacovigilance signal detection |
+| **HR** | Job title in offer letter or LinkedIn import | Internal job architecture / grade catalog | Normalize "Senior Software Engineer II", "Sr. SWE", "L5 Engineer" to canonical job families for compensation benchmarking and workforce analytics |
 
 ---
 
