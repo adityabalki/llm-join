@@ -14,6 +14,7 @@ dependencies = [
     "pandas>=1.5",
     "numpy>=1.23,<2",
     "faiss-cpu>=1.8,<1.14",
+    "tqdm>=4.0",
 ]
 
 [tool.hatch.build.targets.wheel]

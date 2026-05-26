@@ -14,15 +14,11 @@ from llm_join.stats import JoinStats
 
 
 def _maybe_tqdm(iterable, total: int, desc: str, verbose: int):
-    """Wrap iterable in tqdm if verbose >= 1 and tqdm installed; else passthrough."""
+    """Wrap iterable in tqdm if verbose >= 1; else passthrough."""
     if verbose < 1:
         return iterable
-    try:
-        from tqdm import tqdm
-        return tqdm(iterable, total=total, desc=desc, file=sys.stderr)
-    except ImportError:
-        print(f"  [{desc}] starting ({total} items)", file=sys.stderr, flush=True)
-        return iterable
+    from tqdm import tqdm
+    return tqdm(iterable, total=total, desc=desc, file=sys.stderr)
 
 
 def fuzzy_join(
@@ -52,7 +48,7 @@ def fuzzy_join(
 
     verbose:
       0 = silent (default; one-line summary at end always prints)
-      1 = progress bars (tqdm if installed) + per-batch failure detail
+      1 = progress bars (tqdm) + per-batch failure detail
       2 = adds per-record log line: '"left" -> "right" [score=..., embed_rank=..., method]'
     """
     t0 = time.time()
@@ -277,11 +273,8 @@ def _score_async(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_conc
         sem = asyncio.Semaphore(llm_concurrency)
         pbar = None
         if verbose >= 1:
-            try:
-                from tqdm import tqdm
-                pbar = tqdm(total=n, desc="LLM", file=sys.stderr)
-            except ImportError:
-                print(f"  [LLM] starting ({n} calls)", file=sys.stderr, flush=True)
+            from tqdm import tqdm
+            pbar = tqdm(total=n, desc="LLM", file=sys.stderr)
 
         async def _score_one(left_val: str, candidates_with_scores: list):
             async with sem:

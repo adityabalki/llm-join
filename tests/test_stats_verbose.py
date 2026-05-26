@@ -604,24 +604,3 @@ class TestEdgeCases:
         assert int(m.group(1)) == 2
 
 
-# ---------------------------------------------------------------------------
-# tqdm graceful fallback (simulate not installed)
-# ---------------------------------------------------------------------------
-
-class TestTqdmFallback:
-    def test_works_without_tqdm_installed(self, capsys, monkeypatch):
-        # Block tqdm import
-        import sys as _sys
-        monkeypatch.setitem(_sys.modules, "tqdm", None)
-
-        df1 = pd.DataFrame({"a": ["alpha", "beta"]})
-        df2 = pd.DataFrame({"b": ["alpha_v2", "beta_v2"]})
-        # Should not crash even with verbose=1
-        fuzzy_join(
-            df1, df2, left_on="a", right_on="b",
-            llm_fn=make_llm(), embed_fn=mock_embed,
-            context="test", llm_concurrency=1, embed_concurrency=1,
-            verbose=1,
-        )
-        captured = capsys.readouterr()
-        assert "llm-join:" in captured.err

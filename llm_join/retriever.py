@@ -9,16 +9,11 @@ import numpy as np
 
 
 def _maybe_tqdm(iterable, total: int, desc: str, verbose: int):
-    """Wrap iterable in tqdm if verbose >= 1 and tqdm installed; else passthrough."""
+    """Wrap iterable in tqdm if verbose >= 1; else passthrough."""
     if verbose < 1:
         return iterable
-    try:
-        from tqdm import tqdm
-        return tqdm(iterable, total=total, desc=desc, file=sys.stderr)
-    except ImportError:
-        # Graceful fallback: print a one-line text marker
-        print(f"  [{desc}] starting ({total} batches)", file=sys.stderr, flush=True)
-        return iterable
+    from tqdm import tqdm
+    return tqdm(iterable, total=total, desc=desc, file=sys.stderr)
 
 
 class EmbeddingRetriever:
@@ -92,17 +87,10 @@ class EmbeddingRetriever:
             results: list = [None] * n_batches
             done_count = [0]
 
-            # Try tqdm if verbose
             pbar = None
             if verbose >= 1:
-                try:
-                    from tqdm import tqdm
-                    pbar = tqdm(total=n_batches, desc="Embedding", file=sys.stderr)
-                except ImportError:
-                    print(
-                        f"  [Embedding] starting ({n_batches} batches)",
-                        file=sys.stderr, flush=True,
-                    )
+                from tqdm import tqdm
+                pbar = tqdm(total=n_batches, desc="Embedding", file=sys.stderr)
 
             async def _embed_one(idx, batch):
                 async with sem:

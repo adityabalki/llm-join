@@ -584,8 +584,6 @@ Row: "Sony WH-1000XM5" -> "SONY-WH1000XM5-BLK" [score=0.950, embed_rank=0, llm]
 
 Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure) and counted separately in the summary.
 
-`tqdm` is optional. If not installed, progress falls back to a one-line text marker.
-
 ---
 
 ## Features
