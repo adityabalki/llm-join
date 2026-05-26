@@ -616,6 +616,7 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 | `embed_fn` | required | Your embedding function. `(list[str]) -> np.ndarray` of shape `[n, dim]`, dtype `float32`. |
 | `context` | required | Describe what the columns represent and what kind of match to make. Injected into every LLM prompt. |
 | `llm_concurrency` | required | How many LLM calls to run in parallel. `1` = sequential. Start with `10` and adjust based on your API rate limit. |
+| `embed_concurrency` | required | How many `embed_fn` batches to run in parallel. Library auto-detects sync vs async `embed_fn`. Sync uses ThreadPoolExecutor, async uses asyncio.Semaphore. |
 | `column_context` | `{}` | Per-column descriptions `{"col": "description"}` adds extra detail to the prompt beyond `context`. |
 | `top_k` | `5` | How many embedding candidates to retrieve per left row before LLM scoring. |
 | `llm_threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. Rows where LLM scores below this are not joined. |
@@ -624,7 +625,6 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
 | `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |
 | `batch_size` | `32` | How many texts per `embed_fn` call. Raise to 256-1024 for large datasets (OpenAI accepts up to 2048). |
-| `embed_concurrency` | required | How many `embed_fn` batches to run in parallel. Library auto-detects sync vs async `embed_fn`. Sync uses ThreadPoolExecutor, async uses asyncio.Semaphore. |
 | `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
 | `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
 | `verbose` | `0` | Logging level. `0`: silent (one-line summary at end still prints). `1`: tqdm progress bars + per-batch failure detail. `2`: also per-record log line per match. |
