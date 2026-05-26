@@ -328,23 +328,25 @@ result = fuzzy_join(
 
 ## Performance
 
-Set `llm_concurrency` based on your API rate limit.
+Tune `llm_concurrency` and `embed_concurrency` to your API rate limits. Embeddings are usually cheaper and faster, so push them higher.
 
 ```python
-# Sequential use for debugging or if you have strict rate limits
-fuzzy_join(..., llm_concurrency=1)
+# Sequential, for debugging or strict rate limits
+fuzzy_join(..., llm_concurrency=1, embed_concurrency=1)
 
-# Good starting point for most APIs
-fuzzy_join(..., llm_concurrency=10)
+# Sensible defaults for most APIs
+fuzzy_join(..., llm_concurrency=10, embed_concurrency=20)
 
-# High throughput — check your rate limits first
-fuzzy_join(..., llm_concurrency=50)
+# High throughput, check rate limits first
+fuzzy_join(..., llm_concurrency=50, embed_concurrency=100)
 ```
 
-- Sync function (`def my_llm`) → `ThreadPoolExecutor`
-- Async function (`async def my_llm`) → `asyncio` + semaphore
+- Sync function (`def my_llm` / `def my_embed`) → `ThreadPoolExecutor`
+- Async function (`async def my_llm` / `async def my_embed`) → `asyncio` + semaphore
 
-If a call fails after all retries, the top embedding match is used as fallback.
+The library auto-detects sync vs async for both `llm` and `embed_fn`.
+
+If an LLM call fails after all retries, the top embedding match is used as fallback.
 
 ---
 
