@@ -589,7 +589,7 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 ## Features
 
 - **Any provider** — OpenAI, Azure, Anthropic, Bedrock, Vertex, Ollama, or any private model. Sync and async supported.
-- **Enterprise friendly** - User supply the LLM and embedding calls. Your data stays within your own infrastructure and chosen providers.
+- **Enterprise friendly** — User supply the LLM and embedding calls. Your data stays within your own infrastructure and chosen providers.
 - **Two-stage pipeline** — embeddings eliminate 99%+ of pairs; your model scores only the shortlist
 - **Domain context** — `context` and `column_context` inject column level descriptions into every prompt
 - **Full join semantics** — `inner`, `left`, `right`, `full`  same as `pd.merge`
