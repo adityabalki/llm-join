@@ -16,6 +16,7 @@ def test_defaults():
     assert cfg.llm_threshold == 0.7
     assert cfg.context_str == CTX
     assert cfg.batch_size == 32
+    assert cfg.embed_concurrency == 10
     assert cfg.embed_skip_threshold == 1.0
     assert cfg.max_llm_calls is None
 
@@ -65,6 +66,11 @@ def test_invalid_embed_skip_threshold():
 def test_invalid_batch_size():
     with pytest.raises(ValueError):
         ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, context=CTX, batch_size=0)
+
+
+def test_invalid_embed_concurrency():
+    with pytest.raises(ValueError, match="embed_concurrency must be >= 1"):
+        ColumnConfig(left_col="a", right_col="b", embed_fn=dummy_embed, context=CTX, embed_concurrency=0)
 
 
 def test_invalid_max_llm_calls():

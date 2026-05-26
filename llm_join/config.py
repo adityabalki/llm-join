@@ -14,6 +14,7 @@ class ColumnConfig:
     top_k: int = 5
     llm_threshold: float = 0.7
     batch_size: int = 32
+    embed_concurrency: int = 10
     embed_skip_threshold: float = 1.0
     max_llm_calls: Optional[int] = None
     max_retries: int = 3
@@ -35,6 +36,8 @@ class ColumnConfig:
             raise ValueError(f"top_k must be >= 1, got {self.top_k}")
         if self.batch_size < 1:
             raise ValueError(f"batch_size must be >= 1, got {self.batch_size}")
+        if self.embed_concurrency < 1:
+            raise ValueError(f"embed_concurrency must be >= 1, got {self.embed_concurrency}")
         if not 0.0 < self.embed_skip_threshold <= 1.0:
             raise ValueError(f"embed_skip_threshold must be in (0, 1], got {self.embed_skip_threshold}")
         if self.max_llm_calls is not None and self.max_llm_calls < 1:

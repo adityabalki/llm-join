@@ -30,6 +30,8 @@ result = fuzzy_join(
 - [How It Works](#how-it-works)
 - [Cost & Scale](#cost--scale)
 - [Performance](#performance)
+- [Best Practices for Speed](#best-practices-for-speed)
+- [Observability](#observability)
 - [Usage](#usage)
   - [Basic join](#basic-join)
   - [With domain context](#with-domain-context)
@@ -346,6 +348,49 @@ If a call fails after all retries, the top embedding match is used as fallback.
 
 ---
 
+## Best Practices for Speed
+
+For large joins (10k+ rows), follow this pattern:
+
+1. **Use async functions.** Pass async `llm` and `embed_fn` so the library uses `asyncio.Semaphore` instead of threads.
+2. **Reuse one HTTP client.** Create a single `httpx.AsyncClient` outside the function. Avoid `async with httpx.AsyncClient()` inside `embed_fn` or `llm` — that creates a new TCP/TLS handshake per call.
+3. **Raise `batch_size` to 256–2048.** OpenAI accepts up to 2048 texts per embed call. Default 32 is conservative.
+4. **Set `embed_concurrency=50`–`100`.** Embeddings are cheap and fast; push concurrency higher than LLM.
+5. **Set `embed_skip_threshold=0.95`.** Skips LLM for near-identical pairs. Cuts LLM calls 30–60% on most datasets.
+6. **Use a fast model.** `gpt-4o-mini` is 3–4× faster than `gpt-4o` with comparable accuracy for fuzzy matching.
+7. **Use `verbose=1`** so you can see progress and adjust knobs.
+
+Reference notebook with the full async pattern: [`examples/fast_async_join.py`](examples/fast_async_join.py)
+
+---
+
+## Observability
+
+Every `fuzzy_join` call prints a one-line summary to stderr at the end. You always know what happened.
+
+```
+llm-join: 5000 left (deduped to 800) | 12000 right (deduped to 2400) | 200 embed_skipped | 600 LLM | 5 rate-limited | 0 failed | 24.3s total
+```
+
+Set `verbose=1` to add tqdm progress bars during embedding and LLM scoring, plus per-batch retry detail.
+
+```python
+fuzzy_join(..., verbose=1)
+```
+
+Set `verbose=2` to also log every match as it resolves.
+
+```
+Row: "Goldman Sachs & Co." -> "The Goldman Sachs Group Inc" [score=0.970, embed_rank=0, llm]
+Row: "Sony WH-1000XM5" -> "SONY-WH1000XM5-BLK" [score=0.950, embed_rank=0, llm]
+```
+
+Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure) and counted separately in the summary.
+
+`tqdm` is optional. If not installed, progress falls back to a one-line text marker.
+
+---
+
 ## Usage
 
 ### Basic join
@@ -580,6 +625,8 @@ def my_embed(texts):
 - **No duplicate output rows** — one best match per left row; ties broken by embedding rank
 - **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`
 - **Cost controls** — `top_k`, `embed_skip_threshold`, `max_llm_calls`
+- **Parallel embedding** — `embed_concurrency` runs batches of `embed_fn` calls in parallel. Auto-detects sync vs async function.
+- **Observability** — one-line summary always prints at the end (LLM calls, embed skips, rate limits, failures, elapsed time). `verbose=1` adds tqdm progress bars; `verbose=2` adds per-record logs.
 - **Multi-match mode** — `match_all=True` returns all candidates above threshold
 - **Parallel scoring** — `llm_concurrency` controls how many calls run at once
 - **Retry with backoff** — failed calls retry at 1s, 2s, 4s; falls back to top embed match on total failure
@@ -604,9 +651,11 @@ def my_embed(texts):
 | `embed_skip_threshold` | `1.0` | Skip LLM when top embed similarity is at or above this value. Default `1.0` means only identical vectors (exact same text) skip LLM. Lower it (e.g. `0.92`) to skip LLM for near-identical matches and save cost. |
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
 | `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |
-| `batch_size` | `32` | How many texts sent to `embed_fn` per call. Only affects embedding speed, not LLM. Raise to 256-1024 for large datasets if your embedding provider supports it (OpenAI accepts up to 2048). |
+| `batch_size` | `32` | How many texts per `embed_fn` call. Raise to 256-1024 for large datasets (OpenAI accepts up to 2048). |
+| `embed_concurrency` | `10` | How many `embed_fn` batches to run in parallel. Library auto-detects sync vs async `embed_fn`. Sync uses ThreadPoolExecutor, async uses asyncio.Semaphore. |
 | `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
 | `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
+| `verbose` | `0` | Logging level. `0`: silent (one-line summary at end still prints). `1`: tqdm progress bars + per-batch failure detail. `2`: also per-record log line per match. |
 
 ---
 
