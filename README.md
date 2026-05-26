@@ -28,20 +28,13 @@ result = fuzzy_join(
 - [Install](#install)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
-- [Cost & Scale](#cost--scale)
+- [Usage](#usage)
+- [Works with Any LLM](#works-with-any-llm)
+- [Works with Any Embedding Function](#works-with-any-embedding-function)
+- [Cost & Scale](#cost-scale)
 - [Performance](#performance)
 - [Best Practices for Speed](#best-practices-for-speed)
 - [Observability](#observability)
-- [Usage](#usage)
-  - [Basic join](#basic-join)
-  - [With domain context](#with-domain-context)
-  - [See why matches were made](#see-why-matches-were-made)
-  - [Control cost](#control-cost)
-  - [Multi-column join key](#multi-column-join-key)
-  - [Match all results](#match-all-results)
-  - [Chaining multiple joins](#chaining-multiple-joins)
-- [Works with Any LLM](#works-with-any-llm)
-- [Works with Any Embedding Function](#works-with-any-embedding-function)
 - [Features](#features)
 - [Parameters](#parameters)
 - [License](#license)
@@ -276,122 +269,6 @@ The LLM correctly rejected `CABLE-USBA-200CM-BLK` (wrong connector) even though 
 
 ---
 
-## Cost & Scale
-
-If you sent every possible pair to the LLM:
-
-| Left rows | Right rows | Pairs to score | Cost (gpt-4o-mini) |
-|-----------|------------|----------------|---------------------|
-| 1,000 | 10,000 | 10,000,000 | ~$150 |
-| 10,000 | 100,000 | 1,000,000,000 | ~$15,000 |
-| 100,000 | 1,000,000 | 100,000,000,000 | not feasible |
-
-llm-join avoids this with a two stage pipeline.
-
-### Stage 1 — Embeddings narrow the search (cheap)
-
-FAISS finds the top-K most similar candidates per row. Pure math, no API calls.
-
-| | |
-|---|---|
-| Input pairs | 10,000 × 100,000 = **1,000,000,000** |
-| After FAISS (`top_k=5`) | **50,000** candidate pairs |
-| Eliminated for free | **99.995%** of all pairs |
-
-### Stage 2 — LLM scores only the shortlist (accurate)
-
-Your LLM sees a small batch of plausible candidates not the full cross product. One call per left row, all candidates scored in that call.
-
-| Setup | LLM calls | Estimated cost |
-|-------|-----------|----------------|
-| 10k × 100k, top_k=5 | 50,000 | ~$0.75 |
-| 10k × 100k, top_k=3 | 30,000 | ~$0.45 |
-| 10k × 100k, embed_skip_threshold=0.95 | ~5,000 | ~$0.08 |
-
-### Cost controls
-
-```python
-result = fuzzy_join(
-    df1, df2,
-    left_on="vendor", right_on="supplier",
-    llm=my_llm, embed_fn=my_embed,
-    context="...",
-    llm_concurrency=10,
-    top_k=3,                    # fewer candidates = fewer LLM tokens per row
-    embed_skip_threshold=0.95,  # skip LLM entirely if embed score is high enough
-    max_llm_calls=1000,         # hard cap — warns and returns partial result if hit
-)
-```
-
----
-
-## Performance
-
-Tune `llm_concurrency` and `embed_concurrency` to your API rate limits. Embeddings are usually cheaper and faster, so push them higher.
-
-```python
-# Sequential, for debugging or strict rate limits
-fuzzy_join(..., llm_concurrency=1, embed_concurrency=1)
-
-# Sensible defaults for most APIs
-fuzzy_join(..., llm_concurrency=10, embed_concurrency=20)
-
-# High throughput, check rate limits first
-fuzzy_join(..., llm_concurrency=50, embed_concurrency=100)
-```
-
-- Sync function (`def my_llm` / `def my_embed`) → `ThreadPoolExecutor`
-- Async function (`async def my_llm` / `async def my_embed`) → `asyncio` + semaphore
-
-The library auto-detects sync vs async for both `llm` and `embed_fn`.
-
-If an LLM call fails after all retries, the top embedding match is used as fallback.
-
----
-
-## Best Practices for Speed
-
-For large joins (10k+ rows), follow this pattern:
-
-1. **Use async functions.** Pass async `llm` and `embed_fn` so the library uses `asyncio.Semaphore` instead of threads.
-2. **Reuse one HTTP client.** Create a single `httpx.AsyncClient` outside the function. Avoid `async with httpx.AsyncClient()` inside `embed_fn` or `llm` — that creates a new TCP/TLS handshake per call.
-3. **Raise `batch_size` to 256–2048.** OpenAI accepts up to 2048 texts per embed call. Default 32 is conservative.
-4. **Set `embed_concurrency=50`–`100`.** Embeddings are cheap and fast; push concurrency higher than LLM.
-5. **Set `embed_skip_threshold=0.95`.** Skips LLM for near-identical pairs. Cuts LLM calls 30–60% on most datasets.
-6. **Use a fast model.** `gpt-4o-mini` is 3–4× faster than `gpt-4o` with comparable accuracy for fuzzy matching.
-7. **Use `verbose=1`** so you can see progress and adjust knobs.
-
-Reference notebook with the full async pattern: [`examples/fast_async_join.py`](examples/fast_async_join.py)
-
----
-
-## Observability
-
-Every `fuzzy_join` call prints a one-line summary to stderr at the end. You always know what happened.
-
-```
-llm-join: 5000 left (deduped to 800) | 12000 right (deduped to 2400) | 200 embed_skipped | 600 LLM | 5 rate-limited | 0 failed | 24.3s total
-```
-
-Set `verbose=1` to add tqdm progress bars during embedding and LLM scoring, plus per-batch retry detail.
-
-```python
-fuzzy_join(..., verbose=1)
-```
-
-Set `verbose=2` to also log every match as it resolves.
-
-```
-Row: "Goldman Sachs & Co." -> "The Goldman Sachs Group Inc" [score=0.970, embed_rank=0, llm]
-Row: "Sony WH-1000XM5" -> "SONY-WH1000XM5-BLK" [score=0.950, embed_rank=0, llm]
-```
-
-Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure) and counted separately in the summary.
-
-`tqdm` is optional. If not installed, progress falls back to a one-line text marker.
-
----
-
 ## Usage
 
 ### Basic join
@@ -593,6 +470,122 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 def my_embed(texts):
     return model.encode(texts, convert_to_numpy=True).astype("float32")
 ```
+
+---
+
+## Cost & Scale
+
+If you sent every possible pair to the LLM:
+
+| Left rows | Right rows | Pairs to score | Cost (gpt-4o-mini) |
+|-----------|------------|----------------|---------------------|
+| 1,000 | 10,000 | 10,000,000 | ~$150 |
+| 10,000 | 100,000 | 1,000,000,000 | ~$15,000 |
+| 100,000 | 1,000,000 | 100,000,000,000 | not feasible |
+
+llm-join avoids this with a two stage pipeline.
+
+### Stage 1 — Embeddings narrow the search (cheap)
+
+FAISS finds the top-K most similar candidates per row. Pure math, no API calls.
+
+| | |
+|---|---|
+| Input pairs | 10,000 × 100,000 = **1,000,000,000** |
+| After FAISS (`top_k=5`) | **50,000** candidate pairs |
+| Eliminated for free | **99.995%** of all pairs |
+
+### Stage 2 — LLM scores only the shortlist (accurate)
+
+Your LLM sees a small batch of plausible candidates not the full cross product. One call per left row, all candidates scored in that call.
+
+| Setup | LLM calls | Estimated cost |
+|-------|-----------|----------------|
+| 10k × 100k, top_k=5 | 50,000 | ~$0.75 |
+| 10k × 100k, top_k=3 | 30,000 | ~$0.45 |
+| 10k × 100k, embed_skip_threshold=0.95 | ~5,000 | ~$0.08 |
+
+### Cost controls
+
+```python
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor", right_on="supplier",
+    llm=my_llm, embed_fn=my_embed,
+    context="...",
+    llm_concurrency=10,
+    top_k=3,                    # fewer candidates = fewer LLM tokens per row
+    embed_skip_threshold=0.95,  # skip LLM entirely if embed score is high enough
+    max_llm_calls=1000,         # hard cap — warns and returns partial result if hit
+)
+```
+
+---
+
+## Performance
+
+Tune `llm_concurrency` and `embed_concurrency` to your API rate limits. Embeddings are usually cheaper and faster, so push them higher.
+
+```python
+# Sequential, for debugging or strict rate limits
+fuzzy_join(..., llm_concurrency=1, embed_concurrency=1)
+
+# Sensible defaults for most APIs
+fuzzy_join(..., llm_concurrency=10, embed_concurrency=20)
+
+# High throughput, check rate limits first
+fuzzy_join(..., llm_concurrency=50, embed_concurrency=100)
+```
+
+- Sync function (`def my_llm` / `def my_embed`) → `ThreadPoolExecutor`
+- Async function (`async def my_llm` / `async def my_embed`) → `asyncio` + semaphore
+
+The library auto-detects sync vs async for both `llm` and `embed_fn`.
+
+If an LLM call fails after all retries, the top embedding match is used as fallback.
+
+---
+
+## Best Practices for Speed
+
+For large joins (10k+ rows), follow this pattern:
+
+1. **Use async functions.** Pass async `llm` and `embed_fn` so the library uses `asyncio.Semaphore` instead of threads.
+2. **Reuse one HTTP client.** Create a single `httpx.AsyncClient` outside the function. Avoid `async with httpx.AsyncClient()` inside `embed_fn` or `llm` — that creates a new TCP/TLS handshake per call.
+3. **Raise `batch_size` to 256–2048.** OpenAI accepts up to 2048 texts per embed call. Default 32 is conservative.
+4. **Set `embed_concurrency=50`–`100`.** Embeddings are cheap and fast; push concurrency higher than LLM.
+5. **Set `embed_skip_threshold=0.95`.** Skips LLM for near-identical pairs. Cuts LLM calls 30–60% on most datasets.
+6. **Use a fast model.** `gpt-4o-mini` is 3–4× faster than `gpt-4o` with comparable accuracy for fuzzy matching.
+7. **Use `verbose=1`** so you can see progress and adjust knobs.
+
+Reference notebook with the full async pattern: [`examples/fast_async_join.py`](examples/fast_async_join.py)
+
+---
+
+## Observability
+
+Every `fuzzy_join` call prints a one-line summary to stderr at the end. You always know what happened.
+
+```
+llm-join: 5000 left (deduped to 800) | 12000 right (deduped to 2400) | 200 embed_skipped | 600 LLM | 5 rate-limited | 0 failed | 24.3s total
+```
+
+Set `verbose=1` to add tqdm progress bars during embedding and LLM scoring, plus per-batch retry detail.
+
+```python
+fuzzy_join(..., verbose=1)
+```
+
+Set `verbose=2` to also log every match as it resolves.
+
+```
+Row: "Goldman Sachs & Co." -> "The Goldman Sachs Group Inc" [score=0.970, embed_rank=0, llm]
+Row: "Sony WH-1000XM5" -> "SONY-WH1000XM5-BLK" [score=0.950, embed_rank=0, llm]
+```
+
+Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure) and counted separately in the summary.
+
+`tqdm` is optional. If not installed, progress falls back to a one-line text marker.
 
 ---
 
