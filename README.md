@@ -37,6 +37,7 @@ result = fuzzy_join(
 - [Observability](#observability)
 - [Features](#features)
 - [Parameters](#parameters)
+- [Known Issues](#known-issues)
 - [License](#license)
 
 ---
@@ -628,6 +629,20 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 | `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
 | `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
 | `verbose` | `0` | Logging level. `0`: silent (one-line summary at end still prints). `1`: tqdm progress bars + per-batch failure detail. `2`: also per-record log line per match. |
+
+---
+
+## Known Issues
+
+**numpy and faiss version conflict.** `faiss-cpu` requires `numpy<2`. If your environment has `numpy>=2`, FAISS will fail to import with errors like `numpy.core.multiarray failed to import` or `ImportError: numpy.core.multiarray failed to import`.
+
+Fix: downgrade numpy in your environment.
+
+```bash
+pip install "numpy<2"
+```
+
+If you need numpy 2.x for other packages, run llm-join in a separate environment.
 
 ---
 
