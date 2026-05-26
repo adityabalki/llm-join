@@ -95,7 +95,7 @@ class TestSummaryAlwaysPrints:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
         )
@@ -110,7 +110,7 @@ class TestSummaryAlwaysPrints:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
         )
@@ -130,7 +130,7 @@ class TestVerboseZero:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             verbose=0,
@@ -153,7 +153,7 @@ class TestVerboseTwo:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(score=0.95), embed_fn=mock_embed,
+            llm_fn=make_llm(score=0.95), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             verbose=2,
@@ -174,7 +174,7 @@ class TestVerboseTwo:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             verbose=2,
@@ -195,7 +195,7 @@ class TestStatsCounters:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
         )
@@ -212,7 +212,7 @@ class TestStatsCounters:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             embed_skip_threshold=0.99,
@@ -230,7 +230,7 @@ class TestStatsCounters:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=failing_llm, embed_fn=mock_embed,
+            llm_fn=failing_llm, embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             max_retries=0,
@@ -253,7 +253,7 @@ class TestStatsCounters:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=rate_limited_llm, embed_fn=mock_embed,
+            llm_fn=rate_limited_llm, embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             max_retries=2,
@@ -294,7 +294,7 @@ class TestStatsConcurrentPaths:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=8, embed_concurrency=8,  # threaded path
         )
@@ -311,7 +311,7 @@ class TestStatsConcurrentPaths:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=async_llm, embed_fn=mock_embed,
+            llm_fn=async_llm, embed_fn=mock_embed,
             context="test",
             llm_concurrency=5, embed_concurrency=5,  # async path
         )
@@ -331,7 +331,7 @@ class TestStatsConcurrentPaths:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=async_llm, embed_fn=async_embed,
+            llm_fn=async_llm, embed_fn=async_embed,
             context="test",
             llm_concurrency=2, embed_concurrency=2,
         )
@@ -347,7 +347,7 @@ class TestStatsConcurrentPaths:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=async_llm, embed_fn=mock_embed,  # sync embed
+            llm_fn=async_llm, embed_fn=mock_embed,  # sync embed
             context="test",
             llm_concurrency=2, embed_concurrency=2,
         )
@@ -395,7 +395,7 @@ class TestVerboseOneProgress:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=2, embed_concurrency=2,
             verbose=1,
@@ -410,7 +410,7 @@ class TestVerboseOneProgress:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,  # sequential path
             verbose=1,
@@ -427,7 +427,7 @@ class TestVerboseOneProgress:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=async_llm, embed_fn=mock_embed,
+            llm_fn=async_llm, embed_fn=mock_embed,
             context="test",
             llm_concurrency=2, embed_concurrency=2,
             verbose=1,
@@ -447,7 +447,7 @@ class TestVerboseTwoFormat:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(score=0.95, reasoning="strong match"),
+            llm_fn=make_llm(score=0.95, reasoning="strong match"),
             embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
@@ -478,7 +478,7 @@ class TestVerboseTwoFormat:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=multi_match_llm, embed_fn=mock_embed,
+            llm_fn=multi_match_llm, embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             verbose=2,
@@ -506,7 +506,7 @@ class TestEdgeCases:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=low_score_llm, embed_fn=mock_embed,
+            llm_fn=low_score_llm, embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
             llm_threshold=0.9,
@@ -520,7 +520,7 @@ class TestEdgeCases:
         fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test",
             llm_concurrency=1, embed_concurrency=1,
         )
@@ -534,14 +534,14 @@ class TestEdgeCases:
 
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test", llm_concurrency=1, embed_concurrency=1,
         )
         first = capsys.readouterr().err
 
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test", llm_concurrency=1, embed_concurrency=1,
         )
         second = capsys.readouterr().err
@@ -557,7 +557,7 @@ class TestEdgeCases:
         df2 = pd.DataFrame({"b": ["alpha_v2"]})
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test", llm_concurrency=1, embed_concurrency=1,
         )
         captured = capsys.readouterr()
@@ -577,7 +577,7 @@ class TestEdgeCases:
         df2 = pd.DataFrame({"b": ["alpha_v2"]})
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
-            llm=flaky_llm, embed_fn=mock_embed,
+            llm_fn=flaky_llm, embed_fn=mock_embed,
             context="test", llm_concurrency=1, embed_concurrency=1,
             max_retries=5,
         )
@@ -594,7 +594,7 @@ class TestEdgeCases:
         df2 = pd.DataFrame({"b": ["alpha_v2", "beta_v2"]})
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
-            llm=always_fail, embed_fn=mock_embed,
+            llm_fn=always_fail, embed_fn=mock_embed,
             context="test", llm_concurrency=1, embed_concurrency=1,
             max_retries=2,
         )
@@ -619,7 +619,7 @@ class TestTqdmFallback:
         # Should not crash even with verbose=1
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
-            llm=make_llm(), embed_fn=mock_embed,
+            llm_fn=make_llm(), embed_fn=mock_embed,
             context="test", llm_concurrency=1, embed_concurrency=1,
             verbose=1,
         )

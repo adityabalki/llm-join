@@ -31,7 +31,7 @@ def fuzzy_join(
     *,
     left_on: Union[str, list[str]],
     right_on: Union[str, list[str]],
-    llm: Callable,
+    llm_fn: Callable,
     embed_fn: Callable,
     context: str,
     column_context: Optional[dict] = None,
@@ -82,7 +82,7 @@ def fuzzy_join(
         embed_concurrency=cfg.embed_concurrency,
         verbose=verbose,
     )
-    scorer = LLMScorer(llm, max_retries=cfg.max_retries, stats=stats, verbose=verbose)
+    scorer = LLMScorer(llm_fn, max_retries=cfg.max_retries, stats=stats, verbose=verbose)
     merger = Merger()
 
     # Deduplicate left values — LLM called once per unique value, pandas merge fans out.

@@ -14,13 +14,13 @@ from llm_join.stats import JoinStats, is_rate_limit_error
 class LLMScorer:
     def __init__(
         self,
-        llm: Callable,
+        llm_fn: Callable,
         max_retries: int = 3,
         stats: Optional[JoinStats] = None,
         verbose: int = 0,
     ):
-        self._llm = llm
-        self._is_async = asyncio.iscoroutinefunction(llm)
+        self._llm = llm_fn
+        self._is_async = asyncio.iscoroutinefunction(llm_fn)
         self._max_retries = max_retries
         self._stats = stats
         self._verbose = verbose

@@ -68,7 +68,7 @@ class TestContext:
         with pytest.raises(TypeError):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 llm_concurrency=1, embed_concurrency=1,
                 # context omitted
             )
@@ -77,7 +77,7 @@ class TestContext:
         with pytest.raises(ValueError, match="context must not be empty"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context="   ",
                 llm_concurrency=1, embed_concurrency=1,
             )
@@ -85,7 +85,7 @@ class TestContext:
     def test_valid_context_runs(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, llm_concurrency=1, embed_concurrency=1,
         )
         assert isinstance(result, pd.DataFrame)
@@ -100,7 +100,7 @@ class TestLlmThreshold:
         # mock_llm returns 0.95; 0.95 >= 0.01 → eligible, but match_all=False → ONE match per left row
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=2, llm_threshold=0.01,
             how="inner", llm_concurrency=1, embed_concurrency=1,
         )
@@ -110,7 +110,7 @@ class TestLlmThreshold:
         # mock_llm returns 0.95; 0.95 < 1.0 → no matches
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=2, llm_threshold=1.0,
             how="inner", llm_concurrency=1, embed_concurrency=1,
         )
@@ -120,7 +120,7 @@ class TestLlmThreshold:
         # mock_llm returns 0.95; 0.95 >= 0.95 → matches
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_threshold=0.95,
             how="inner", llm_concurrency=1, embed_concurrency=1,
         )
@@ -130,7 +130,7 @@ class TestLlmThreshold:
         # mock_llm returns 0.95; threshold 0.96 → no match
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_threshold=0.96,
             how="inner", llm_concurrency=1, embed_concurrency=1,
         )
@@ -140,7 +140,7 @@ class TestLlmThreshold:
         with pytest.raises(ValueError, match="llm_threshold"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, llm_threshold=1.5, llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -148,7 +148,7 @@ class TestLlmThreshold:
         with pytest.raises(ValueError, match="llm_threshold"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, llm_threshold=0.0, llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -162,7 +162,7 @@ class TestEmbedSkipThreshold:
         """embed_skip_threshold=1.0 (default): identical vectors skip LLM."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm,        # proves LLM never called
+            llm_fn=failing_llm,        # proves LLM never called
             embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
@@ -174,7 +174,7 @@ class TestEmbedSkipThreshold:
         """Reasoning explains why LLM was skipped."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm, embed_fn=all_same_embed,
+            llm_fn=failing_llm, embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -184,7 +184,7 @@ class TestEmbedSkipThreshold:
         """embed_skip_threshold=0.99: cosine=1.0 >= 0.99 → skips LLM."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm, embed_fn=all_same_embed,
+            llm_fn=failing_llm, embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             embed_skip_threshold=0.99, return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -200,7 +200,7 @@ class TestEmbedSkipThreshold:
 
         fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=counting_llm, embed_fn=mock_embed,
+            llm_fn=counting_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
         )
         assert len(llm_called) > 0, "LLM should have been called (embed cosine < 1.0)"
@@ -209,7 +209,7 @@ class TestEmbedSkipThreshold:
         """match_method='embed_skip' when embed score triggers the shortcut."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm, embed_fn=all_same_embed,
+            llm_fn=failing_llm, embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -220,7 +220,7 @@ class TestEmbedSkipThreshold:
         """_llm_score for embed_skip rows is the cosine similarity (1.0 for identical vectors)."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm, embed_fn=all_same_embed,
+            llm_fn=failing_llm, embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -230,7 +230,7 @@ class TestEmbedSkipThreshold:
         with pytest.raises(ValueError, match="embed_skip_threshold"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, embed_skip_threshold=1.5, llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -238,7 +238,7 @@ class TestEmbedSkipThreshold:
         with pytest.raises(ValueError, match="embed_skip_threshold"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, embed_skip_threshold=0.0, llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -258,7 +258,7 @@ class TestTopK:
 
         fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=capturing_llm, embed_fn=mock_embed,
+            llm_fn=capturing_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
         )
         for p in prompts:
@@ -275,7 +275,7 @@ class TestTopK:
 
         fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=capturing_llm, embed_fn=mock_embed,
+            llm_fn=capturing_llm, embed_fn=mock_embed,
             context=CTX, top_k=2, llm_concurrency=1, embed_concurrency=1,
         )
         for p in prompts:
@@ -286,7 +286,7 @@ class TestTopK:
         """top_k=10 with only 2 right rows → retrieves 2, no crash."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=10, llm_concurrency=1, embed_concurrency=1,
         )
         assert isinstance(result, pd.DataFrame)
@@ -295,7 +295,7 @@ class TestTopK:
         with pytest.raises(ValueError, match="top_k"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, top_k=0, llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -311,7 +311,7 @@ class TestHow:
     def test_inner_keeps_only_matched(self):
         result = fuzzy_join(
             self._df1_partial(), DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1, how="inner",
         )
         assert "dose" in result.columns
@@ -322,7 +322,7 @@ class TestHow:
     def test_left_keeps_all_left_rows(self):
         result = fuzzy_join(
             self._df1_partial(), DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1, how="left",
         )
         # All left rows must appear
@@ -332,7 +332,7 @@ class TestHow:
     def test_inner_does_not_have_nan_prices(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1, how="inner",
         )
         assert result["price"].notna().all()
@@ -341,7 +341,7 @@ class TestHow:
         """how='full' returns all rows from both sides (full outer join)."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, how="full", llm_concurrency=1, embed_concurrency=1,
         )
         assert isinstance(result, pd.DataFrame)
@@ -353,7 +353,7 @@ class TestHow:
         with pytest.raises(ValueError, match="how"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, how="outer", llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -361,7 +361,7 @@ class TestHow:
         with pytest.raises(ValueError, match="how"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, how="cross", llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -374,7 +374,7 @@ class TestMaxLlmCalls:
     def test_max_llm_calls_warns_when_exceeded(self, recwarn):
         fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, max_llm_calls=1,
             llm_concurrency=1, embed_concurrency=1,
         )
@@ -384,7 +384,7 @@ class TestMaxLlmCalls:
         """With max_llm_calls=1 and 2 left rows, result is partial (≤ 2 rows)."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, max_llm_calls=1, how="inner",
             llm_concurrency=1, embed_concurrency=1,
         )
@@ -393,7 +393,7 @@ class TestMaxLlmCalls:
     def test_max_llm_calls_not_exceeded_no_warn(self, recwarn):
         fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, max_llm_calls=100,
             llm_concurrency=1, embed_concurrency=1,
         )
@@ -403,7 +403,7 @@ class TestMaxLlmCalls:
         with pytest.raises(ValueError, match="max_llm_calls"):
             fuzzy_join(
                 DF1, DF2, left_on="drug", right_on="brand",
-                llm=mock_llm, embed_fn=mock_embed,
+                llm_fn=mock_llm, embed_fn=mock_embed,
                 context=CTX, max_llm_calls=0, llm_concurrency=1, embed_concurrency=1,
             )
 
@@ -420,7 +420,7 @@ class TestMaxRetries:
 
         fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=fail_once_llm, embed_fn=mock_embed,
+            llm_fn=fail_once_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, max_retries=0,
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -434,7 +434,7 @@ class TestMaxRetries:
 
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=fail_llm, embed_fn=mock_embed,
+            llm_fn=fail_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, max_retries=0,
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -447,7 +447,7 @@ class TestMaxRetries:
 
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=fail_llm, embed_fn=mock_embed,
+            llm_fn=fail_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, max_retries=0,
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -462,7 +462,7 @@ class TestReturnReasoning:
     def test_false_no_debug_columns(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, return_reasoning=False, llm_concurrency=1, embed_concurrency=1,
         )
         for col in ["_llm_score", "_llm_reasoning", "_embed_rank", "_match_method", "_llm_candidates"]:
@@ -471,7 +471,7 @@ class TestReturnReasoning:
     def test_true_adds_all_debug_columns(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
         for col in ["_llm_score", "_llm_reasoning", "_embed_rank", "_match_method", "_llm_candidates"]:
@@ -480,7 +480,7 @@ class TestReturnReasoning:
     def test_llm_score_is_float(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
         assert result["_llm_score"].dtype in [float, "float64"]
@@ -488,7 +488,7 @@ class TestReturnReasoning:
     def test_llm_candidates_is_list_of_dicts(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
         for candidates in result["_llm_candidates"]:
@@ -500,7 +500,7 @@ class TestReturnReasoning:
     def test_match_method_llm_for_normal_matches(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
         assert (result["_match_method"] == "llm").all()
@@ -515,7 +515,7 @@ class TestMatchAll:
         """Default: only best match per left row."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_threshold=0.01,
             match_all=False, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
@@ -526,7 +526,7 @@ class TestMatchAll:
         """match_all=True: all candidates above threshold returned."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=2, llm_threshold=0.01,
             match_all=True, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
@@ -537,7 +537,7 @@ class TestMatchAll:
         """match_all annotates reasoning with count of candidates returned."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=2, llm_threshold=0.01,
             match_all=True, return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -552,7 +552,7 @@ class TestLlmConcurrency:
     def test_concurrency_1_sequential(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
         )
         assert isinstance(result, pd.DataFrame)
@@ -560,12 +560,12 @@ class TestLlmConcurrency:
     def test_concurrency_2_same_result_as_sequential(self):
         r1 = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1, how="inner",
         )
         r2 = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=2, embed_concurrency=2, how="inner",
         )
         assert len(r1) == len(r2)
@@ -580,7 +580,7 @@ class TestLlmConcurrency:
         })
         result = fuzzy_join(
             df1_large, df2_large, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=3, embed_concurrency=3, how="inner",
         )
         assert len(result) == 4
@@ -600,7 +600,7 @@ class TestColumnContext:
 
         fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=capturing_llm, embed_fn=mock_embed,
+            llm_fn=capturing_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
             column_context={
                 "drug": "generic INN drug name",
@@ -613,7 +613,7 @@ class TestColumnContext:
     def test_column_context_empty_dict_runs(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
             column_context={},
         )
@@ -622,7 +622,7 @@ class TestColumnContext:
     def test_column_context_none_runs(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
             column_context=None,
         )
@@ -639,7 +639,7 @@ class TestMultiColumnKeys:
         df2 = pd.DataFrame({"brand": ["Bayer Aspirin Tablet"], "price": [5.0]})
         result = fuzzy_join(
             df1, df2, left_on=["drug", "form"], right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
         )
         assert "__left_key__" not in result.columns
@@ -649,7 +649,7 @@ class TestMultiColumnKeys:
         df2 = pd.DataFrame({"role": ["Software"], "level": ["Engineer"]})
         result = fuzzy_join(
             df1, df2, left_on="title", right_on=["role", "level"],
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context="job title matching", top_k=1, llm_concurrency=1, embed_concurrency=1,
         )
         assert "__right_key__" not in result.columns
@@ -659,7 +659,7 @@ class TestMultiColumnKeys:
         df2 = pd.DataFrame({"brand": ["Bayer Aspirin Tablet", "Advil Capsule"], "price": [5.0, 8.0]})
         result = fuzzy_join(
             df1, df2, left_on=["drug", "form"], right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
         assert "dose" in result.columns
@@ -671,7 +671,7 @@ class TestMultiColumnKeys:
         df2 = pd.DataFrame({"role": ["Software", "Data"], "level": ["Engineer", "Analyst"], "salary": [100, 90]})
         result = fuzzy_join(
             df1, df2, left_on="title", right_on=["role", "level"],
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context="job title matching", top_k=1, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
         assert "salary" in result.columns
@@ -682,7 +682,7 @@ class TestMultiColumnKeys:
         df2 = pd.DataFrame({"brand": ["Bayer"], "type": ["Aspirin Tablet"]})
         result = fuzzy_join(
             df1, df2, left_on=["drug", "form"], right_on=["brand", "type"],
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
         )
         assert "__left_key__" not in result.columns
@@ -695,7 +695,7 @@ class TestMultiColumnKeys:
         df2 = pd.DataFrame({"brand": ["aspirin tablet 100mg"], "price": [5.0]})
         result = fuzzy_join(
             df1, df2, left_on=["drug", "form", "strength"], right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, llm_concurrency=1, embed_concurrency=1,
         )
         assert len(result) == 1
@@ -712,7 +712,7 @@ class TestEmbedSkipWithReasoning:
         """embed_skip rows bypassed LLM → _llm_candidates should be None (no prompt was built)."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm, embed_fn=all_same_embed,
+            llm_fn=failing_llm, embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -722,7 +722,7 @@ class TestEmbedSkipWithReasoning:
     def test_embed_skip_score_in_valid_range(self):
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm, embed_fn=all_same_embed,
+            llm_fn=failing_llm, embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -741,7 +741,7 @@ class TestNoDuplicates:
         df2 = pd.DataFrame({"brand": ["Bayer Aspirin"], "price": [5.0]})
         result = fuzzy_join(
             df1, df2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
         # Both df1 rows are identical in all columns; after join both match same right row
@@ -755,7 +755,7 @@ class TestNoDuplicates:
         df2 = pd.DataFrame({"brand": ["Bayer Aspirin"], "price": [5.0]})
         result = fuzzy_join(
             df1, df2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
         # Rows differ in dose → NOT duplicates → both preserved
@@ -769,7 +769,7 @@ class TestNoDuplicates:
         df2 = pd.DataFrame({"brand": ["Bayer Aspirin"], "price": [5.0]})
         result = fuzzy_join(
             df1, df2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
         assert len(result) == 2
@@ -779,7 +779,7 @@ class TestNoDuplicates:
         """drop_duplicates must not crash when _llm_candidates (list column) is present."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -789,7 +789,7 @@ class TestNoDuplicates:
         """embed_skip path + return_reasoning=True must not crash or produce duplicates."""
         result = fuzzy_join(
             DF1, DF2, left_on="drug", right_on="brand",
-            llm=failing_llm, embed_fn=all_same_embed,
+            llm_fn=failing_llm, embed_fn=all_same_embed,
             context=CTX, top_k=1, how="inner",
             return_reasoning=True, llm_concurrency=1, embed_concurrency=1,
         )
@@ -801,7 +801,7 @@ class TestNoDuplicates:
         df2 = pd.DataFrame({"brand": ["Bayer Aspirin", "Advil", "Tylenol"], "price": [5.0, 8.0, 3.0]})
         result = fuzzy_join(
             df1, df2, left_on="drug", right_on="brand",
-            llm=mock_llm, embed_fn=mock_embed,
+            llm_fn=mock_llm, embed_fn=mock_embed,
             context=CTX, top_k=1, how="inner", llm_concurrency=1, embed_concurrency=1,
         )
         assert len(result) <= len(df1)

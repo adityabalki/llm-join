@@ -103,7 +103,7 @@ if __name__ == "__main__":
         df1, df2,
         left_on="vendor",
         right_on="supplier_name",
-        llm=my_llm,
+        llm_fn=my_llm,
         embed_fn=my_embed,
         context="company names — match legal entity variants and abbreviations",
         # Speed knobs

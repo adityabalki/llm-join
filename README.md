@@ -12,7 +12,7 @@ from llm_join import fuzzy_join
 result = fuzzy_join(
     df1, df2,
     left_on="vendor", right_on="supplier_name",
-    llm=my_llm, embed_fn=my_embed,
+    llm_fn=my_llm, embed_fn=my_embed,
     context="company names",
     llm_concurrency=10,
 )
@@ -144,7 +144,7 @@ result = fuzzy_join(
     df1, df2,
     left_on="vendor",
     right_on="supplier_name",
-    llm=my_llm,
+    llm_fn=my_llm,
     embed_fn=my_embed,
     context="company names — match legal entity variants and abbreviations",
     llm_concurrency=10,   # how many LLM calls to run in parallel
@@ -184,7 +184,7 @@ catalog_df = pd.DataFrame({"sku": [
 result = fuzzy_join(
     orders_df, catalog_df,
     left_on="product_name", right_on="sku",
-    llm=my_llm, embed_fn=my_embed,
+    llm_fn=my_llm, embed_fn=my_embed,
     context="procurement match buyer product descriptions to supplier SKU codes",
     top_k=3, llm_threshold=0.7,
     llm_concurrency=10,
@@ -278,7 +278,7 @@ result = fuzzy_join(
     orders_df, catalog_df,
     left_on="product_name",
     right_on="sku",
-    llm=my_llm,
+    llm_fn=my_llm,
     embed_fn=my_embed,
     context="procurement match buyer product descriptions to supplier SKU codes",
     llm_concurrency=10,
@@ -294,7 +294,7 @@ result = fuzzy_join(
     orders_df, catalog_df,
     left_on="product_name",
     right_on="sku",
-    llm=my_llm,
+    llm_fn=my_llm,
     embed_fn=my_embed,
     context="procurement match buyer product descriptions to supplier SKU codes",
     column_context={
@@ -312,7 +312,7 @@ result = fuzzy_join(
     df1, df2,
     left_on="vendor",
     right_on="supplier_name",
-    llm=my_llm,
+    llm_fn=my_llm,
     embed_fn=my_embed,
     context="company names match legal entity variants",
     llm_concurrency=10,
@@ -338,7 +338,7 @@ result = fuzzy_join(
     orders_df, catalog_df,
     left_on=["product_name", "category"],
     right_on="sku_description",
-    llm=my_llm,
+    llm_fn=my_llm,
     embed_fn=my_embed,
     context="procurement match buyer product + category to supplier SKU description",
     llm_concurrency=10,
@@ -354,7 +354,7 @@ By default, only the best-scoring match above threshold is returned. Set `match_
 result = fuzzy_join(
     drugs_df, synonyms_df,
     left_on="generic_name", right_on="name",
-    llm=my_llm, embed_fn=my_embed,
+    llm_fn=my_llm, embed_fn=my_embed,
     context="pharmaceutical drug names match generics to all known synonyms",
     llm_concurrency=10,
     match_all=True,
@@ -377,7 +377,7 @@ Each `fuzzy_join` returns a regular DataFrame pipe them like `pd.merge`.
 step1 = fuzzy_join(
     df1, df2,
     left_on="vendor", right_on="supplier_name",
-    llm=my_llm, embed_fn=my_embed,
+    llm_fn=my_llm, embed_fn=my_embed,
     context="company names — match legal entity variants",
     llm_concurrency=10,
     how="left", return_reasoning=True,
@@ -387,7 +387,7 @@ step1 = fuzzy_join(
 result = fuzzy_join(
     step1, df3,
     left_on="product", right_on="catalog_item",
-    llm=my_llm, embed_fn=my_embed,
+    llm_fn=my_llm, embed_fn=my_embed,
     context="product names — match internal descriptions to catalog items",
     llm_concurrency=10,
     how="left", return_reasoning=True,
@@ -511,7 +511,7 @@ Your LLM sees a small batch of plausible candidates not the full cross product. 
 result = fuzzy_join(
     df1, df2,
     left_on="vendor", right_on="supplier",
-    llm=my_llm, embed_fn=my_embed,
+    llm_fn=my_llm, embed_fn=my_embed,
     context="...",
     llm_concurrency=10,
     top_k=3,                    # fewer candidates = fewer LLM tokens per row
@@ -540,7 +540,7 @@ fuzzy_join(..., llm_concurrency=50, embed_concurrency=100)
 - Sync function (`def my_llm` / `def my_embed`) → `ThreadPoolExecutor`
 - Async function (`async def my_llm` / `async def my_embed`) → `asyncio` + semaphore
 
-The library auto-detects sync vs async for both `llm` and `embed_fn`.
+The library auto-detects sync vs async for both `llm_fn` and `embed_fn`.
 
 If an LLM call fails after all retries, the top embedding match is used as fallback.
 
@@ -550,8 +550,8 @@ If an LLM call fails after all retries, the top embedding match is used as fallb
 
 For large joins (10k+ rows), follow this pattern:
 
-1. **Use async functions.** Pass async `llm` and `embed_fn` so the library uses `asyncio.Semaphore` instead of threads.
-2. **Reuse one HTTP client.** Create a single `httpx.AsyncClient` outside the function. Avoid `async with httpx.AsyncClient()` inside `embed_fn` or `llm` — that creates a new TCP/TLS handshake per call.
+1. **Use async functions.** Pass async `llm_fn` and `embed_fn` so the library uses `asyncio.Semaphore` instead of threads.
+2. **Reuse one HTTP client.** Create a single `httpx.AsyncClient` outside the function. Avoid `async with httpx.AsyncClient()` inside `embed_fn` or `llm_fn` — that creates a new TCP/TLS handshake per call.
 3. **Raise `batch_size` to 256–2048.** OpenAI accepts up to 2048 texts per embed call. Default 32 is conservative.
 4. **Set `embed_concurrency=50`–`100`.** Embeddings are cheap and fast; push concurrency higher than LLM.
 5. **Set `embed_skip_threshold=0.95`.** Skips LLM for near-identical pairs. Cuts LLM calls 30–60% on most datasets.
@@ -615,7 +615,7 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 |-----------|---------|-------------|
 | `left_on` | required | Column name(s) in df1. Pass a list for multi-column keys  any number of columns supported. |
 | `right_on` | required | Column name(s) in df2. Pass a list for multi-column keys  any number of columns supported. |
-| `llm` | required | Your LLM function. Sync: `(str) -> str`. Async: `async (str) -> str`. |
+| `llm_fn` | required | Your LLM function. Sync: `(str) -> str`. Async: `async (str) -> str`. |
 | `embed_fn` | required | Your embedding function. `(list[str]) -> np.ndarray` of shape `[n, dim]`, dtype `float32`. |
 | `context` | required | Describe what the columns represent and what kind of match to make. Injected into every LLM prompt. |
 | `llm_concurrency` | required | How many LLM calls to run in parallel. `1` = sequential. Start with `10` and adjust based on your API rate limit. |

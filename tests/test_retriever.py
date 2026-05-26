@@ -396,7 +396,7 @@ class TestFuzzyJoinIntegration:
         result = fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=sync_llm,
+            llm_fn=sync_llm,
             embed_fn=async_embed,
             context="test",
             llm_concurrency=2, embed_concurrency=2,
@@ -424,7 +424,7 @@ class TestFuzzyJoinIntegration:
         result = fuzzy_join(
             df1, df2,
             left_on="a", right_on="b",
-            llm=sync_llm,
+            llm_fn=sync_llm,
             embed_fn=sync_embed,
             context="test",
             llm_concurrency=2, embed_concurrency=2,
