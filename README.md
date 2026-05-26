@@ -555,8 +555,7 @@ For large joins (10k+ rows), follow this pattern:
 3. **Raise `batch_size` to 256–2048.** OpenAI accepts up to 2048 texts per embed call. Default 32 is conservative.
 4. **Set `embed_concurrency=50`–`100`.** Embeddings are cheap and fast; push concurrency higher than LLM.
 5. **Set `embed_skip_threshold=0.95`.** Skips LLM for near-identical pairs. Cuts LLM calls 30–60% on most datasets.
-6. **Use a fast model.** `gpt-4o-mini` is 3–4× faster than `gpt-4o` with comparable accuracy for fuzzy matching.
-7. **Use `verbose=1`** so you can see progress and adjust knobs.
+6. **Use `verbose=1`** so you can see progress and adjust knobs.
 
 Reference notebook with the full async pattern: [`examples/fast_async_join.py`](examples/fast_async_join.py)
 
