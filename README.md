@@ -552,7 +552,7 @@ For large joins (10k+ rows), follow this pattern:
 
 1. **Use async functions.** Pass async `llm_fn` and `embed_fn` so the library uses `asyncio.Semaphore` instead of threads.
 2. **Reuse one HTTP client.** Create a single `httpx.AsyncClient` outside the function. Avoid `async with httpx.AsyncClient()` inside `embed_fn` or `llm_fn` — that creates a new TCP/TLS handshake per call.
-3. **Raise `batch_size` to 256–2048.** OpenAI accepts up to 2048 texts per embed call. Default 32 is conservative.
+3. **Raise `batch_size`** (default 32 is conservative). For example, OpenAI accepts up to 2048 texts per embed call. Limit varies by provider — check your provider's docs.
 4. **Set `embed_concurrency=50`–`100`.** Embeddings are cheap and fast; push concurrency higher than LLM.
 5. **Set `embed_skip_threshold=0.95`.** Skips LLM for near-identical pairs. Cuts LLM calls 30–60% on most datasets.
 6. **Use `verbose=1`** so you can see progress and adjust knobs.
@@ -624,7 +624,7 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 | `embed_skip_threshold` | `1.0` | Skip LLM when top embed similarity is at or above this value. Default `1.0` means only identical vectors (exact same text) skip LLM. Lower it (e.g. `0.92`) to skip LLM for near-identical matches and save cost. |
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
 | `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |
-| `batch_size` | `32` | How many texts per `embed_fn` call. Raise to 256-1024 for large datasets (OpenAI accepts up to 2048). |
+| `batch_size` | `32` | How many texts per `embed_fn` call. Raise for large datasets (e.g. OpenAI accepts up to 2048; limit varies by provider). |
 | `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
 | `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
 | `verbose` | `0` | Logging level. `0`: silent (one-line summary at end still prints). `1`: tqdm progress bars + per-batch failure detail. `2`: also per-record log line per match. |
