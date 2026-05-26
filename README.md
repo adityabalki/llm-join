@@ -37,7 +37,6 @@ result = fuzzy_join(
   - [With domain context](#with-domain-context)
   - [See why matches were made](#see-why-matches-were-made)
   - [Control cost](#control-cost)
-  - [Left join (audit unmatched rows)](#left-join-audit-unmatched-rows)
   - [Multi-column join key](#multi-column-join-key)
   - [Match all results](#match-all-results)
   - [Chaining multiple joins](#chaining-multiple-joins)
@@ -451,25 +450,6 @@ print(result[["vendor", "supplier_name", "_llm_score", "_llm_reasoning", "_match
 | Goldman Sachs & Co. | The Goldman Sachs Group Inc | 0.97 | same firm, legal name variant | llm | [{"candidate": "The Goldman Sachs...", "embed_score": 0.94}, ...] |
 
 `_llm_candidates` shows exactly which candidates were sent to the LLM and their embedding scores useful for tuning `top_k` and `threshold`.
-
-### Left join (audit unmatched rows)
-
-`how="left"` keeps all left rows. Unmatched ones get NaN in the right columns useful for finding what failed to match.
-
-```python
-result = fuzzy_join(
-    df1, df2,
-    left_on="vendor", right_on="supplier_name",
-    llm=my_llm, embed_fn=my_embed,
-    context="company names — match legal entity variants",
-    llm_concurrency=10,
-    how="left",
-)
-
-unmatched = result[result["supplier_name"].isna()]
-```
-
-> `how="full"` is useful for reconciliation unmatched left rows have no match above threshold; unmatched right rows were never selected as a best match.
 
 ### Multi-column join key
 
