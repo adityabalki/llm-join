@@ -39,7 +39,6 @@ def fuzzy_join(
     llm_threshold: float = 0.7,
     how: str = "inner",
     batch_size: int = 32,
-    embed_concurrency: int = 10,
     embed_skip_threshold: float = 1.0,
     max_llm_calls: Optional[int] = None,
     max_retries: int = 3,
@@ -47,6 +46,7 @@ def fuzzy_join(
     match_all: bool = False,
     verbose: int = 0,
     llm_concurrency: int,
+    embed_concurrency: int,
 ) -> pd.DataFrame:
     """Fuzzy join two DataFrames using embeddings + LLM scoring.
 

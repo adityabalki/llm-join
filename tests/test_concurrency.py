@@ -66,7 +66,7 @@ def test_threaded_returns_dataframe():
         left_on="drug", right_on="brand",
         llm=single_match_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=3,
+        llm_concurrency=3, embed_concurrency=3,
     )
     assert isinstance(result, pd.DataFrame)
     assert len(result) == len(LEFT)
@@ -79,8 +79,8 @@ def test_threaded_same_result_as_sequential():
         llm=single_match_llm, embed_fn=mock_embed,
         context=CTX, top_k=4, how="inner",
     )
-    seq = fuzzy_join(LEFT, RIGHT, **common, llm_concurrency=1)
-    par = fuzzy_join(LEFT, RIGHT, **common, llm_concurrency=4)
+    seq = fuzzy_join(LEFT, RIGHT, **common, llm_concurrency=1, embed_concurrency=1)
+    par = fuzzy_join(LEFT, RIGHT, **common, llm_concurrency=4, embed_concurrency=4)
 
     assert sorted(seq["drug"].tolist()) == sorted(par["drug"].tolist())
 
@@ -92,7 +92,7 @@ def test_threaded_row_order_preserved():
         left_on="drug", right_on="brand",
         llm=single_match_llm, embed_fn=mock_embed,
         context=CTX, top_k=4, how="inner",
-        llm_concurrency=4,
+        llm_concurrency=4, embed_concurrency=4,
     )
     # Each drug appears exactly once — order must match LEFT
     assert result["drug"].tolist() == LEFT["drug"].tolist()
@@ -111,7 +111,7 @@ def test_threaded_all_llm_calls_made():
         left_on="drug", right_on="brand",
         llm=counting_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=2,
+        llm_concurrency=2, embed_concurrency=2,
     )
     assert len(call_count) == len(LEFT)
 
@@ -126,7 +126,7 @@ def test_threaded_embed_fallback_on_llm_failure():
         left_on="drug", right_on="brand",
         llm=failing_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=3,
+        llm_concurrency=3, embed_concurrency=3,
         return_reasoning=True,
         max_retries=0,
     )
@@ -148,7 +148,7 @@ def test_threaded_partial_failure_fallback():
         left_on="drug", right_on="brand",
         llm=partial_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=2,
+        llm_concurrency=2, embed_concurrency=2,
         return_reasoning=True,
         max_retries=0,
     )
@@ -168,13 +168,13 @@ def test_threaded_is_faster_than_sequential():
     t0 = time.time()
     fuzzy_join(LEFT, RIGHT, left_on="drug", right_on="brand",
                llm=slow_llm, embed_fn=mock_embed, context=CTX, top_k=4,
-               llm_concurrency=1)
+               llm_concurrency=1, embed_concurrency=1)
     seq_time = time.time() - t0
 
     t0 = time.time()
     fuzzy_join(LEFT, RIGHT, left_on="drug", right_on="brand",
                llm=slow_llm, embed_fn=mock_embed, context=CTX, top_k=4,
-               llm_concurrency=4)
+               llm_concurrency=4, embed_concurrency=4)
     par_time = time.time() - t0
 
     assert par_time < seq_time * 0.7, (
@@ -197,7 +197,7 @@ async def test_async_llm_returns_dataframe():
         left_on="drug", right_on="brand",
         llm=async_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=3,
+        llm_concurrency=3, embed_concurrency=3,
     )
     assert isinstance(result, pd.DataFrame)
     assert len(result) == len(LEFT)
@@ -213,7 +213,7 @@ async def test_async_llm_embed_fallback_on_failure():
         left_on="drug", right_on="brand",
         llm=failing_async_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=2,
+        llm_concurrency=2, embed_concurrency=2,
         return_reasoning=True,
         max_retries=0,
     )
@@ -232,7 +232,7 @@ async def test_async_llm_row_order_preserved():
         left_on="drug", right_on="brand",
         llm=async_llm, embed_fn=mock_embed,
         context=CTX, top_k=4, how="inner",
-        llm_concurrency=4,
+        llm_concurrency=4, embed_concurrency=4,
     )
     assert result["drug"].tolist() == LEFT["drug"].tolist()
 
@@ -251,7 +251,7 @@ async def test_async_llm_partial_failure_fallback():
         left_on="drug", right_on="brand",
         llm=partial_async_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=2,
+        llm_concurrency=2, embed_concurrency=2,
         return_reasoning=True,
         max_retries=0,
     )
@@ -270,7 +270,7 @@ def test_concurrency_1_unchanged_behaviour():
         left_on="drug", right_on="brand",
         llm=single_match_llm, embed_fn=mock_embed,
         context=CTX, top_k=4,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert isinstance(result, pd.DataFrame)
     assert len(result) == len(LEFT)

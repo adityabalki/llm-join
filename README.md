@@ -654,7 +654,7 @@ def my_embed(texts):
 | `max_llm_calls` | `None` | Hard cap on total LLM calls. Emits a warning and returns a partial result if hit. |
 | `max_retries` | `3` | How many times to retry a failed LLM call (exponential backoff). Set `0` to disable. Falls back to top embed candidate on total failure. |
 | `batch_size` | `32` | How many texts per `embed_fn` call. Raise to 256-1024 for large datasets (OpenAI accepts up to 2048). |
-| `embed_concurrency` | `10` | How many `embed_fn` batches to run in parallel. Library auto-detects sync vs async `embed_fn`. Sync uses ThreadPoolExecutor, async uses asyncio.Semaphore. |
+| `embed_concurrency` | required | How many `embed_fn` batches to run in parallel. Library auto-detects sync vs async `embed_fn`. Sync uses ThreadPoolExecutor, async uses asyncio.Semaphore. |
 | `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
 | `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
 | `verbose` | `0` | Logging level. `0`: silent (one-line summary at end still prints). `1`: tqdm progress bars + per-batch failure detail. `2`: also per-record log line per match. |

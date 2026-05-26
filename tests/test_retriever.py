@@ -399,8 +399,7 @@ class TestFuzzyJoinIntegration:
             llm=sync_llm,
             embed_fn=async_embed,
             context="test",
-            llm_concurrency=2,
-            embed_concurrency=4,
+            llm_concurrency=2, embed_concurrency=2,
             batch_size=2,
         )
         assert isinstance(result, pd.DataFrame)
@@ -428,8 +427,7 @@ class TestFuzzyJoinIntegration:
             llm=sync_llm,
             embed_fn=sync_embed,
             context="test",
-            llm_concurrency=2,
-            embed_concurrency=4,
+            llm_concurrency=2, embed_concurrency=2,
             batch_size=4,
         )
         # 10 corpus + 10 query = 20 texts → 5 batches at batch_size=4

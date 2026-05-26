@@ -39,7 +39,7 @@ def test_basic_join_returns_dataframe():
         embed_fn=mock_embed,
         context=CTX,
         top_k=2,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert isinstance(result, pd.DataFrame)
 
@@ -52,7 +52,7 @@ def test_inner_join_has_both_columns():
         context=CTX,
         top_k=2,
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert "dose" in result.columns
     assert "price" in result.columns
@@ -66,7 +66,7 @@ def test_return_reasoning_adds_score_column():
         context=CTX,
         top_k=2,
         return_reasoning=True,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert "_llm_score" in result.columns
     assert "_llm_reasoning" in result.columns
@@ -83,7 +83,7 @@ def test_threshold_low_matches_everything():
         top_k=2,
         llm_threshold=0.01,
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(result) == 2
 
@@ -98,7 +98,7 @@ def test_threshold_one_matches_nothing():
         top_k=2,
         llm_threshold=1.0,
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(result) == 0
 
@@ -111,7 +111,7 @@ def test_max_llm_calls_warns(recwarn):
         context=CTX,
         top_k=2,
         max_llm_calls=1,  # only 1 allowed, 2 rows -> warn
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert any("max_llm_calls" in str(w.message) for w in recwarn)
 
@@ -128,7 +128,7 @@ def test_multi_col_left_on():
         context=CTX,
         top_k=1,
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert isinstance(result, pd.DataFrame)
 
@@ -141,7 +141,7 @@ def test_missing_context_raises():
             llm=mock_llm,
             embed_fn=mock_embed,
             # context omitted — should raise TypeError (missing required arg)
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
         )
 
 
@@ -153,7 +153,7 @@ def test_empty_context_raises():
             llm=mock_llm,
             embed_fn=mock_embed,
             context="   ",  # whitespace-only
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
         )
 
 
@@ -171,7 +171,7 @@ def test_embed_fallback_on_llm_failure():
         top_k=2,
         max_retries=0,  # no retries — fail immediately
         return_reasoning=True,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     # Both rows should still be in result via embed fallback
     assert len(result) == 2
@@ -197,7 +197,7 @@ def test_multi_col_left_on_result_has_correct_rows():
         context=CTX,
         top_k=1,   # 1 candidate → mock returns exactly 1 match per left row
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(result) == 2
     assert "dose" in result.columns
@@ -216,7 +216,7 @@ def test_multi_col_left_on_no_temp_key_leaked():
         embed_fn=mock_embed,
         context=CTX,
         top_k=1,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert "__left_key__" not in result.columns
 
@@ -234,7 +234,7 @@ def test_multi_col_right_on_result_has_correct_rows():
         context="job title matching",
         top_k=1,   # 1 candidate → mock returns exactly 1 match per left row
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(result) == 2
     assert "salary" in result.columns
@@ -252,7 +252,7 @@ def test_multi_col_right_on_no_temp_key_leaked():
         embed_fn=mock_embed,
         context="job title matching",
         top_k=1,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert "__right_key__" not in result.columns
 
@@ -269,7 +269,7 @@ def test_multi_col_both_sides():
         embed_fn=mock_embed,
         context=CTX,
         top_k=1,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert isinstance(result, pd.DataFrame)
     assert "__left_key__" not in result.columns
@@ -293,7 +293,7 @@ def test_multi_col_three_left_keys():
         embed_fn=mock_embed,
         context=CTX,
         top_k=1,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(result) == 1
     assert "__left_key__" not in result.columns
@@ -319,7 +319,7 @@ def test_multi_col_four_left_keys():
         embed_fn=mock_embed,
         context=CTX,
         top_k=1,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(result) == 1
     assert "__left_key__" not in result.columns
@@ -343,7 +343,7 @@ def test_multi_col_three_right_keys():
         embed_fn=mock_embed,
         context=CTX,
         top_k=1,
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(result) == 1
     assert "__right_key__" not in result.columns
@@ -381,7 +381,7 @@ def test_duplicate_left_rows_fan_out():
         context=CTX,
         top_k=1,
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     # 2 unique left values → 2 LLM calls (not 4)
     assert len(llm_call_count) == 2, f"Expected 2 LLM calls, got {len(llm_call_count)}"
@@ -412,7 +412,7 @@ def test_all_duplicate_left_rows():
         context=CTX,
         top_k=1,
         how="inner",
-        llm_concurrency=1,
+        llm_concurrency=1, embed_concurrency=1,
     )
     assert len(llm_call_count) == 1, f"Expected 1 LLM call, got {len(llm_call_count)}"
     assert len(result) == 5  # all 5 rows matched

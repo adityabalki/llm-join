@@ -97,7 +97,7 @@ class TestSummaryAlwaysPrints:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
         )
         captured = capsys.readouterr()
         assert "llm-join:" in captured.err
@@ -112,7 +112,7 @@ class TestSummaryAlwaysPrints:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
         )
         captured = capsys.readouterr()
         assert "3 left" in captured.err
@@ -132,7 +132,7 @@ class TestVerboseZero:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             verbose=0,
         )
         captured = capsys.readouterr()
@@ -155,7 +155,7 @@ class TestVerboseTwo:
             left_on="a", right_on="b",
             llm=make_llm(score=0.95), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             verbose=2,
         )
         captured = capsys.readouterr()
@@ -176,7 +176,7 @@ class TestVerboseTwo:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             verbose=2,
             embed_skip_threshold=0.99,
         )
@@ -197,7 +197,7 @@ class TestStatsCounters:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
         )
         captured = capsys.readouterr()
         # 3 unique left vals = 3 LLM calls
@@ -214,7 +214,7 @@ class TestStatsCounters:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             embed_skip_threshold=0.99,
         )
         captured = capsys.readouterr()
@@ -232,7 +232,7 @@ class TestStatsCounters:
             left_on="a", right_on="b",
             llm=failing_llm, embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             max_retries=0,
         )
         captured = capsys.readouterr()
@@ -255,7 +255,7 @@ class TestStatsCounters:
             left_on="a", right_on="b",
             llm=rate_limited_llm, embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             max_retries=2,
         )
         captured = capsys.readouterr()
@@ -296,7 +296,7 @@ class TestStatsConcurrentPaths:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=8,  # threaded path
+            llm_concurrency=8, embed_concurrency=8,  # threaded path
         )
         captured = capsys.readouterr()
         m = re.search(r"(\d+) LLM", captured.err)
@@ -313,7 +313,7 @@ class TestStatsConcurrentPaths:
             left_on="a", right_on="b",
             llm=async_llm, embed_fn=mock_embed,
             context="test",
-            llm_concurrency=5,  # async path
+            llm_concurrency=5, embed_concurrency=5,  # async path
         )
         captured = capsys.readouterr()
         m = re.search(r"(\d+) LLM", captured.err)
@@ -333,8 +333,7 @@ class TestStatsConcurrentPaths:
             left_on="a", right_on="b",
             llm=async_llm, embed_fn=async_embed,
             context="test",
-            llm_concurrency=2,
-            embed_concurrency=2,
+            llm_concurrency=2, embed_concurrency=2,
         )
         captured = capsys.readouterr()
         assert "2 LLM" in captured.err
@@ -350,7 +349,7 @@ class TestStatsConcurrentPaths:
             left_on="a", right_on="b",
             llm=async_llm, embed_fn=mock_embed,  # sync embed
             context="test",
-            llm_concurrency=2,
+            llm_concurrency=2, embed_concurrency=2,
         )
         captured = capsys.readouterr()
         assert "llm-join:" in captured.err
@@ -398,7 +397,7 @@ class TestVerboseOneProgress:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=2,
+            llm_concurrency=2, embed_concurrency=2,
             verbose=1,
         )
         captured = capsys.readouterr()
@@ -413,7 +412,7 @@ class TestVerboseOneProgress:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,  # sequential path
+            llm_concurrency=1, embed_concurrency=1,  # sequential path
             verbose=1,
         )
         captured = capsys.readouterr()
@@ -430,7 +429,7 @@ class TestVerboseOneProgress:
             left_on="a", right_on="b",
             llm=async_llm, embed_fn=mock_embed,
             context="test",
-            llm_concurrency=2,
+            llm_concurrency=2, embed_concurrency=2,
             verbose=1,
         )
         captured = capsys.readouterr()
@@ -451,7 +450,7 @@ class TestVerboseTwoFormat:
             llm=make_llm(score=0.95, reasoning="strong match"),
             embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             verbose=2,
         )
         captured = capsys.readouterr()
@@ -481,7 +480,7 @@ class TestVerboseTwoFormat:
             left_on="a", right_on="b",
             llm=multi_match_llm, embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             verbose=2,
             match_all=True,
             top_k=2,
@@ -509,7 +508,7 @@ class TestEdgeCases:
             left_on="a", right_on="b",
             llm=low_score_llm, embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
             llm_threshold=0.9,
         )
         captured = capsys.readouterr()
@@ -523,7 +522,7 @@ class TestEdgeCases:
             left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
             context="test",
-            llm_concurrency=1,
+            llm_concurrency=1, embed_concurrency=1,
         )
         captured = capsys.readouterr()
         # Should match "X.Xs total" pattern
@@ -536,14 +535,14 @@ class TestEdgeCases:
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
-            context="test", llm_concurrency=1,
+            context="test", llm_concurrency=1, embed_concurrency=1,
         )
         first = capsys.readouterr().err
 
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
-            context="test", llm_concurrency=1,
+            context="test", llm_concurrency=1, embed_concurrency=1,
         )
         second = capsys.readouterr().err
 
@@ -559,7 +558,7 @@ class TestEdgeCases:
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
-            context="test", llm_concurrency=1,
+            context="test", llm_concurrency=1, embed_concurrency=1,
         )
         captured = capsys.readouterr()
         assert "llm-join:" in captured.err
@@ -579,7 +578,7 @@ class TestEdgeCases:
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
             llm=flaky_llm, embed_fn=mock_embed,
-            context="test", llm_concurrency=1,
+            context="test", llm_concurrency=1, embed_concurrency=1,
             max_retries=5,
         )
         captured = capsys.readouterr()
@@ -596,7 +595,7 @@ class TestEdgeCases:
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
             llm=always_fail, embed_fn=mock_embed,
-            context="test", llm_concurrency=1,
+            context="test", llm_concurrency=1, embed_concurrency=1,
             max_retries=2,
         )
         captured = capsys.readouterr()
@@ -621,7 +620,7 @@ class TestTqdmFallback:
         fuzzy_join(
             df1, df2, left_on="a", right_on="b",
             llm=make_llm(), embed_fn=mock_embed,
-            context="test", llm_concurrency=1,
+            context="test", llm_concurrency=1, embed_concurrency=1,
             verbose=1,
         )
         captured = capsys.readouterr()
