@@ -46,3 +46,4 @@ def test_fuzzy_join_default_uses_embedding_retriever():
             embed_concurrency=1,
         )
         mock_embed.assert_called_once()
+        mock_instance.retrieve_with_scores.assert_called_once()
