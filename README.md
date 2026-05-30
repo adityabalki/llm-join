@@ -75,7 +75,7 @@ Character similarity, not meaning. `"iPhone 14 Pro"` vs `"iPhone 14 Pro Max"` sc
 Fast and cheap, but no reasoning. Can't explain why two values match or catch false positives confidently.
 
 ### llm-join
-Hybrid retrieval (embeddings for semantic similarity + BM25 for lexical / token matches) narrows the field cheaply. Your model scores only the plausible candidates with context you provide. Accurate where it matters, fast where it doesn't.
+Embedding retrieval narrows the field cheaply by finding semantically similar candidates. Your model scores only the plausible candidates with context you provide. Accurate where it matters, fast where it doesn't.
 
 **Works with any provider:** OpenAI, Azure, Anthropic, Bedrock, Ollama, or any private model. No data leaves your infrastructure beyond what your own providers already see.
 
@@ -615,7 +615,7 @@ llm-join avoids this with a two stage pipeline.
 
 ### Stage 1 — Retrieval narrows the search (cheap)
 
-Hybrid retrieval (embeddings + BM25) returns the top-K best candidates per row. Mostly local math, only embedding API calls (BM25 is pure CPU).
+Embedding retrieval returns the top-K best candidates per row. Mostly local math — embedding API calls for vectors, then FAISS ANN search.
 
 | | |
 |---|---|
