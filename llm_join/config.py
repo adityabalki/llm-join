@@ -19,6 +19,8 @@ class ColumnConfig:
     max_llm_calls: Optional[int] = None
     max_retries: int = 3
     match_all: bool = False
+    retrieval: str = "hybrid"
+    bm25_stopwords: Optional[object] = None
 
     def __post_init__(self):
         if not self.left_col:
@@ -44,6 +46,10 @@ class ColumnConfig:
             raise ValueError(f"max_llm_calls must be >= 1, got {self.max_llm_calls}")
         if self.max_retries < 0:
             raise ValueError(f"max_retries must be >= 0, got {self.max_retries}")
+        if self.retrieval not in ("embedding", "bm25", "hybrid"):
+            raise ValueError(
+                f"retrieval must be one of 'embedding', 'bm25', 'hybrid', got {self.retrieval!r}"
+            )
 
     @property
     def context_str(self) -> str:

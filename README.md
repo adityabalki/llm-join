@@ -4,7 +4,7 @@
 
 **The pandas join that understands what your data means.**
 
-`pd.merge` joins on exact values. `llm-join` joins on meaning using embeddings to find candidates and an LLM you already have to decide if they match.
+`pd.merge` joins on exact values. `llm-join` joins on meaning using hybrid retrieval (embeddings + BM25) to find candidates and an LLM you already have to decide if they match.
 
 ```python
 from llm_join import fuzzy_join
@@ -15,6 +15,7 @@ result = fuzzy_join(
     llm_fn=my_llm, embed_fn=my_embed,
     context="company names",
     llm_concurrency=10,
+    embed_concurrency=20,
 )
 ```
 
@@ -28,6 +29,7 @@ result = fuzzy_join(
 - [Install](#install)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
+- [Retrieval Methods](#retrieval-methods)
 - [Usage](#usage)
 - [Works with Any LLM](#works-with-any-llm)
 - [Works with Any Embedding Function](#works-with-any-embedding-function)
@@ -71,7 +73,7 @@ Character similarity, not meaning. `"iPhone 14 Pro"` vs `"iPhone 14 Pro Max"` sc
 Fast and cheap, but no reasoning. Can't explain why two values match or catch false positives confidently.
 
 ### llm-join
-Embeddings narrow the field cheaply. Your model scores only the plausible candidates with context you provide. Accurate where it matters, fast where it doesn't.
+Hybrid retrieval (embeddings for semantic similarity + BM25 for lexical / token matches) narrows the field cheaply. Your model scores only the plausible candidates with context you provide. Accurate where it matters, fast where it doesn't.
 
 **Works with any provider:** OpenAI, Azure, Anthropic, Bedrock, Ollama, or any private model. No data leaves your infrastructure beyond what your own providers already see.
 
@@ -149,6 +151,7 @@ result = fuzzy_join(
     embed_fn=my_embed,
     context="company names — match legal entity variants and abbreviations",
     llm_concurrency=10,   # how many LLM calls to run in parallel
+    embed_concurrency=20,
     how="inner",
 )
 
@@ -189,6 +192,7 @@ result = fuzzy_join(
     context="procurement match buyer product descriptions to supplier SKU codes",
     top_k=3, llm_threshold=0.7,
     llm_concurrency=10,
+    embed_concurrency=20,
 )
 ```
 
@@ -205,9 +209,11 @@ Every value gets converted to a vector.
 | `"CHAIR-MESH-ERG-ADJUSTABLE"` | seating / mesh / ergonomic |
 | `"MON-27-4K-IPS-HDMI2"` | display / 27in / 4K |
 
-### Step 2 — FAISS retrieves top-K candidates per row (no LLM)
+### Step 2 — Retrieval finds top-K candidates per row (no LLM)
 
-For each left row, FAISS finds the `top_k` closest right vectors using cosine similarity. Everything else is eliminated no LLM call needed.
+For each left row, the retriever returns the `top_k` best candidates from the right table. By default this is **hybrid retrieval** — FAISS embedding similarity + BM25 lexical scoring, fused via Reciprocal Rank Fusion (see [Retrieval Methods](#retrieval-methods)). Everything outside the top_k is eliminated, no LLM call needed.
+
+The walkthrough below shows embedding scores only, for clarity. With `retrieval="hybrid"` (default), BM25 token-overlap scores also contribute to the ranking.
 
 **Query: `"USB-C charging cable 2m black"` → top_k=3**
 
@@ -270,6 +276,118 @@ The LLM correctly rejected `CABLE-USBA-200CM-BLK` (wrong connector) even though 
 
 ---
 
+## Retrieval Methods
+
+llm-join supports three retrieval methods for the first-stage candidate filter:
+
+| Method | What it scores | Strengths |
+|---|---|---|
+| `embedding` | Semantic similarity (cosine on vectors) | Paraphrases, synonyms, multilingual |
+| `bm25` | Lexical / token overlap (TF-IDF based) | Rare tokens, codes, acronyms, exact identifiers |
+| `hybrid` (default) | Both, fused via Reciprocal Rank Fusion (RRF) | Catches both semantic and lexical signals |
+
+Set via the `retrieval` parameter.
+
+```python
+fuzzy_join(..., retrieval="hybrid")    # default
+fuzzy_join(..., retrieval="embedding") # semantic only
+fuzzy_join(..., retrieval="bm25")      # lexical only
+```
+
+---
+
+### What is BM25?
+
+BM25 (Best Match 25) is a classic lexical scoring algorithm. It ranks documents by how well query tokens overlap, weighted by:
+
+- **Term frequency** — how often a query word appears in the document
+- **Inverse document frequency (IDF)** — how rare the word is in the corpus (rare = more meaningful)
+- **Document length normalization** — short focused matches outrank long noisy ones
+
+No embeddings, no neural nets. Pure statistics. Fast, deterministic.
+
+---
+
+### Why embeddings alone aren't enough
+
+Embedding models trained on web text know common acronyms (`USA` ≈ `United States`, ~0.85 cosine) but miss private or rare ones:
+
+| Query | Right column | Embedding cosine |
+|---|---|---|
+| `APAC` | `Asia Pacific` | ~0.65–0.75 |
+| `BMS` | `Bristol-Myers Squibb` | ~0.30 |
+| `CABLE-USBC-200CM-BLK` | `USB-C cable 2m black` | ~0.45 |
+| `TYL-500` | `Tylenol 500mg` | ~0.20 |
+| `INR-FX-HEDGE-2024Q4` | `Indian Rupee FX Hedge Q4 2024` | ~0.40 |
+
+For these, the correct candidate may not even reach the top-K embedding list — the LLM never sees it.
+
+BM25 catches them via literal token overlap. `APAC` in the query matches `APAC` in `APAC region office` regardless of vector space.
+
+---
+
+### Example: when hybrid wins
+
+**Corpus (right table):**
+
+| supplier_name |
+|---|
+| ABC Holding Co |
+| ABC Holdings Pvt Ltd |
+| ABC Pvt Limited (NSE) |
+| ABC Capital Markets |
+| XYZ Corp |
+
+**Query (left):** `"ABC Pvt Ltd"`
+
+**`retrieval="embedding"` top-5:**
+- `ABC Holding Co` (0.81)
+- `ABC Capital Markets` (0.74)
+- `ABC Holdings Pvt Ltd` (0.72)
+- `XYZ Corp` (0.31)
+- `ABC Pvt Limited (NSE)` (0.29) ← weak vector, ranked last
+
+LLM sees the correct match `ABC Pvt Limited (NSE)` at rank 4. Often gets dropped if `top_k=3`.
+
+**`retrieval="bm25"` top-5:**
+- `ABC Pvt Limited (NSE)` (BM25 high — both `Pvt` and `Ltd` are rare tokens)
+- `ABC Holdings Pvt Ltd`
+- `ABC Holding Co`
+- `ABC Capital Markets`
+- `XYZ Corp` (rank 0 — no overlap)
+
+**`retrieval="hybrid"` top-5 (RRF fusion):**
+- `ABC Holdings Pvt Ltd` (appears in BOTH lists → boosted)
+- `ABC Pvt Limited (NSE)` (BM25 rank-1 → surfaces)
+- `ABC Holding Co` (embed rank-0)
+- `ABC Capital Markets`
+- `XYZ Corp`
+
+LLM now sees the right answer at rank 2 instead of rank 4 or missing entirely.
+
+---
+
+### Tie-breaking in hybrid
+
+When two candidates have identical RRF scores, llm-join prefers:
+1. Higher RRF score
+2. Appears in **both** lists over single-list candidate
+3. Higher embedding score
+
+This rewards candidates with dual evidence (lexical + semantic).
+
+---
+
+### BM25 stopwords
+
+By default `bm25_stopwords=None` — all tokens are kept. Set `bm25_stopwords="en"` only for pure natural-language fields. For codes / drug names / company names (where short words like `A` or `of` may carry meaning), leave it off.
+
+```python
+fuzzy_join(..., retrieval="hybrid", bm25_stopwords="en")  # for free-text fields
+```
+
+---
+
 ## Usage
 
 ### Basic join
@@ -283,6 +401,7 @@ result = fuzzy_join(
     embed_fn=my_embed,
     context="procurement match buyer product descriptions to supplier SKU codes",
     llm_concurrency=10,
+    embed_concurrency=20,
 )
 ```
 
@@ -303,6 +422,7 @@ result = fuzzy_join(
         "sku": "supplier stock keeping unit code, typically uppercase with hyphens",
     },
     llm_concurrency=10,
+    embed_concurrency=20,
 )
 ```
 
@@ -317,6 +437,7 @@ result = fuzzy_join(
     embed_fn=my_embed,
     context="company names match legal entity variants",
     llm_concurrency=10,
+    embed_concurrency=20,
     return_reasoning=True,
 )
 
@@ -343,6 +464,7 @@ result = fuzzy_join(
     embed_fn=my_embed,
     context="procurement match buyer product + category to supplier SKU description",
     llm_concurrency=10,
+    embed_concurrency=20,
 )
 ```
 
@@ -358,6 +480,7 @@ result = fuzzy_join(
     llm_fn=my_llm, embed_fn=my_embed,
     context="pharmaceutical drug names match generics to all known synonyms",
     llm_concurrency=10,
+    embed_concurrency=20,
     match_all=True,
     top_k=10,
 )
@@ -381,6 +504,7 @@ step1 = fuzzy_join(
     llm_fn=my_llm, embed_fn=my_embed,
     context="company names — match legal entity variants",
     llm_concurrency=10,
+    embed_concurrency=20,
     how="left", return_reasoning=True,
 )
 
@@ -391,6 +515,7 @@ result = fuzzy_join(
     llm_fn=my_llm, embed_fn=my_embed,
     context="product names — match internal descriptions to catalog items",
     llm_concurrency=10,
+    embed_concurrency=20,
     how="left", return_reasoning=True,
 )
 ```
@@ -486,9 +611,9 @@ If you sent every possible pair to the LLM:
 
 llm-join avoids this with a two stage pipeline.
 
-### Stage 1 — Embeddings narrow the search (cheap)
+### Stage 1 — Retrieval narrows the search (cheap)
 
-FAISS finds the top-K most similar candidates per row. Pure math, no API calls.
+Hybrid retrieval (embeddings + BM25) returns the top-K best candidates per row. Mostly local math, only embedding API calls (BM25 is pure CPU).
 
 | | |
 |---|---|
@@ -515,6 +640,7 @@ result = fuzzy_join(
     llm_fn=my_llm, embed_fn=my_embed,
     context="...",
     llm_concurrency=10,
+    embed_concurrency=20,
     top_k=3,                    # fewer candidates = fewer LLM tokens per row
     embed_skip_threshold=0.95,  # skip LLM entirely if embed score is high enough
     max_llm_calls=1000,         # hard cap — warns and returns partial result if hit
@@ -591,11 +717,12 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 
 - **Any provider** — OpenAI, Azure, Anthropic, Bedrock, Vertex, Ollama, or any private model. Sync and async supported.
 - **Enterprise friendly** — User supply the LLM and embedding calls. Your data stays within your own infrastructure and chosen providers.
-- **Two-stage pipeline** — embeddings eliminate 99%+ of pairs; your model scores only the shortlist
+- **Hybrid retrieval** — embedding (semantic) + BM25 (lexical) fused via RRF. Catches both paraphrase matches and rare token matches. Toggle with `retrieval="embedding"` / `"bm25"` / `"hybrid"` (default).
+- **Two-stage pipeline** — first stage eliminates 99%+ of pairs; your model scores only the shortlist
 - **Domain context** — `context` and `column_context` inject column level descriptions into every prompt
 - **Full join semantics** — `inner`, `left`, `right`, `full`  same as `pd.merge`
 - **Multi-column keys** — pass a list to `left_on` / `right_on`
-- **No duplicate output rows** — one best match per left row; ties broken by embedding rank
+- **No duplicate output rows** — one best match per left row; ties broken by retrieval rank
 - **Reasoning output** — `return_reasoning=True` adds `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`
 - **Cost controls** — `top_k`, `embed_skip_threshold`, `max_llm_calls`
 - **Parallel embedding** — `embed_concurrency` runs batches of `embed_fn` calls in parallel. Auto-detects sync vs async function.
@@ -618,6 +745,8 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 | `context` | required | Describe what the columns represent and what kind of match to make. Injected into every LLM prompt. |
 | `llm_concurrency` | required | How many LLM calls to run in parallel. `1` = sequential. Start with `10` and adjust based on your API rate limit. |
 | `embed_concurrency` | required | How many `embed_fn` batches to run in parallel. Library auto-detects sync vs async `embed_fn`. Sync uses ThreadPoolExecutor, async uses asyncio.Semaphore. |
+| `retrieval` | `"hybrid"` | First-stage candidate filter. `"embedding"` (semantic only), `"bm25"` (lexical only), `"hybrid"` (both fused via RRF — default). See [Retrieval Methods](#retrieval-methods). |
+| `bm25_stopwords` | `None` | Stopword list for BM25 tokenization. `None` keeps all tokens (default, best for codes/names). Pass `"en"` for English natural-language fields, or a custom list. |
 | `column_context` | `{}` | Per-column descriptions `{"col": "description"}` adds extra detail to the prompt beyond `context`. |
 | `top_k` | `5` | How many embedding candidates to retrieve per left row before LLM scoring. |
 | `llm_threshold` | `0.7` | Minimum LLM score (0–1) to accept a match. Rows where LLM scores below this are not joined. |

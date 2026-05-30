@@ -8,6 +8,8 @@ import pandas as pd
 
 from llm_join.config import ColumnConfig
 from llm_join.retriever import EmbeddingRetriever
+from llm_join.bm25 import BM25Retriever
+from llm_join.hybrid import HybridRetriever
 from llm_join.scorer import LLMScorer
 from llm_join.merger import Merger, MatchResult
 from llm_join.stats import JoinStats
@@ -41,6 +43,8 @@ def fuzzy_join(
     return_reasoning: bool = False,
     match_all: bool = False,
     verbose: int = 0,
+    retrieval: str = "hybrid",
+    bm25_stopwords: Optional[object] = None,
     llm_concurrency: int,
     embed_concurrency: int,
 ) -> pd.DataFrame:
@@ -70,14 +74,24 @@ def fuzzy_join(
         max_llm_calls=max_llm_calls,
         max_retries=max_retries,
         match_all=match_all,
+        retrieval=retrieval,
+        bm25_stopwords=bm25_stopwords,
     )
 
-    retriever = EmbeddingRetriever(
+    embed_retriever = EmbeddingRetriever(
         embed_fn=cfg.embed_fn,
         batch_size=cfg.batch_size,
         embed_concurrency=cfg.embed_concurrency,
         verbose=verbose,
     )
+    bm25_retriever = BM25Retriever(stopwords=cfg.bm25_stopwords)
+
+    if cfg.retrieval == "embedding":
+        retriever = embed_retriever
+    elif cfg.retrieval == "bm25":
+        retriever = bm25_retriever
+    else:  # hybrid
+        retriever = HybridRetriever(embed_retriever, bm25_retriever)
     scorer = LLMScorer(llm_fn, max_retries=cfg.max_retries, stats=stats, verbose=verbose)
     merger = Merger()
 
@@ -119,7 +133,8 @@ def fuzzy_join(
             stacklevel=2,
         )
 
-    candidates_per_row = retriever.retrieve_with_scores(left_vals, right_vals, top_k=cfg.top_k)
+    raw_candidates = retriever.retrieve_with_scores(left_vals, right_vals, top_k=cfg.top_k)
+    candidates_per_row = [_normalize_candidates(row, cfg.retrieval) for row in raw_candidates]
 
     # --- Pass 1: embed_threshold short-circuit, collect rows needing LLM ---
     embed_matches: list[MatchResult] = []
@@ -129,7 +144,10 @@ def fuzzy_join(
         if not candidates_with_scores:
             continue
 
-        best_candidate, best_score = candidates_with_scores[0]
+        top = candidates_with_scores[0]
+        best_candidate = top["candidate"]
+        # embed_skip only fires on real embedding signal — bm25-only candidates can't trigger it
+        best_score = top["embed_score"] if top["embed_score"] is not None else 0.0
         if best_score >= cfg.embed_skip_threshold:
             embed_matches.append(MatchResult(
                 left_val=left_val,
@@ -178,8 +196,53 @@ def fuzzy_join(
 # Scoring helpers
 # ---------------------------------------------------------------------------
 
+def _normalize_candidates(row, retrieval_mode: str) -> list[dict]:
+    """Convert retriever output to uniform dict format.
+
+    EmbeddingRetriever and BM25Retriever return list[tuple[str, float]].
+    HybridRetriever returns list[dict] already enriched.
+    """
+    out: list[dict] = []
+    for item in row:
+        if isinstance(item, dict):
+            out.append(item)
+        else:
+            cand, score = item
+            if retrieval_mode == "embedding":
+                out.append({
+                    "candidate": cand,
+                    "embed_score": float(score),
+                    "bm25_score": None,
+                    "embed_rank": len(out),
+                    "bm25_rank": None,
+                    "rrf_score": None,
+                    "source": "embed",
+                })
+            else:  # bm25
+                out.append({
+                    "candidate": cand,
+                    "embed_score": None,
+                    "bm25_score": float(score),
+                    "embed_rank": None,
+                    "bm25_rank": len(out),
+                    "rrf_score": None,
+                    "source": "bm25",
+                })
+    return out
+
+
 def _make_debug(candidates_with_scores: list) -> list:
-    return [{"candidate": c, "embed_score": round(s, 4)} for c, s in candidates_with_scores]
+    out = []
+    for d in candidates_with_scores:
+        entry = {"candidate": d["candidate"], "source": d["source"]}
+        if d.get("embed_score") is not None:
+            entry["embed_score"] = round(d["embed_score"], 4)
+        if d.get("bm25_score") is not None:
+            entry["bm25_score"] = round(d["bm25_score"], 4)
+        if d.get("rrf_score") is not None:
+            entry["rrf_score"] = round(d["rrf_score"], 4)
+        out.append(entry)
+    return out
 
 
 def _process_results(
@@ -190,7 +253,10 @@ def _process_results(
 ) -> list[MatchResult]:
     """Convert scorer output to MatchResult list, applying embed fallback on None."""
     if results is None:
-        best_candidate, best_embed_score = candidates_with_scores[0]
+        top = candidates_with_scores[0]
+        best_candidate = top["candidate"]
+        # Fallback score: embed_score if available, otherwise bm25, otherwise 0
+        best_embed_score = top.get("embed_score") or top.get("bm25_score") or 0.0
         return [MatchResult(
             left_val=left_val,
             right_val=best_candidate,
@@ -227,7 +293,7 @@ def _score_sequential(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, ver
     matches = []
     iterator = _maybe_tqdm(llm_queue, len(llm_queue), "LLM", verbose)
     for left_val, candidates_with_scores in iterator:
-        candidates = [c for c, _ in candidates_with_scores]
+        candidates = [d["candidate"] for d in candidates_with_scores]
         candidates_debug = _make_debug(candidates_with_scores)
         results = scorer.score(
             left_val, candidates, cfg.context_str,
@@ -242,7 +308,7 @@ def _score_threaded(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_c
     result_map: dict[int, list[MatchResult]] = {}
 
     def _score_one(idx: int, left_val: str, candidates_with_scores: list):
-        candidates = [c for c, _ in candidates_with_scores]
+        candidates = [d["candidate"] for d in candidates_with_scores]
         results = scorer.score(
             left_val, candidates, cfg.context_str,
             llm_threshold=cfg.llm_threshold, match_all=cfg.match_all,
@@ -278,7 +344,7 @@ def _score_async(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_conc
 
         async def _score_one(left_val: str, candidates_with_scores: list):
             async with sem:
-                candidates = [c for c, _ in candidates_with_scores]
+                candidates = [d["candidate"] for d in candidates_with_scores]
                 results = await scorer.score_async(
                     left_val, candidates, cfg.context_str,
                     llm_threshold=cfg.llm_threshold, match_all=cfg.match_all,
