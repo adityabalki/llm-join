@@ -49,7 +49,7 @@ def fuzzy_join(
     embed_concurrency: int,
     checkpoint_path: Optional[str] = None,
     dry_run: bool = False,
-) -> pd.DataFrame:
+) -> "Union[pd.DataFrame, DryRunResult]":
     """Fuzzy join two DataFrames using embeddings + LLM scoring.
 
     verbose:
