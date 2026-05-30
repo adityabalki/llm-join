@@ -193,10 +193,15 @@ class LLMScorer:
             return []
 
         # Collect all valid scored items above threshold, deduplicated by index
+        # Support both index-based format {"index": 0, ...} and value-based format {"right_val": "...", ...}
+        candidate_index: dict[str, int] = {c: i for i, c in enumerate(candidates)}
         seen_indices: set[int] = set()
         scored = []
         for item in parsed:
             idx = item.get("index", -1)
+            # Fallback: resolve index from right_val if index is missing or invalid
+            if not (0 <= idx < len(candidates)) and "right_val" in item:
+                idx = candidate_index.get(item["right_val"], -1)
             if not (0 <= idx < len(candidates)):
                 continue
             if idx in seen_indices:

@@ -47,6 +47,7 @@ def fuzzy_join(
     bm25_stopwords: Optional[object] = None,
     llm_concurrency: int,
     embed_concurrency: int,
+    checkpoint_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fuzzy join two DataFrames using embeddings + LLM scoring.
 
@@ -133,14 +134,34 @@ def fuzzy_join(
             stacklevel=2,
         )
 
-    raw_candidates = retriever.retrieve_with_scores(left_vals, right_vals, top_k=cfg.top_k)
+    store = None
+    checkpoint_matches: list = []
+    pending_left_vals = left_vals
+    if checkpoint_path is not None:
+        from llm_join.checkpoint import CheckpointStore
+        store = CheckpointStore(checkpoint_path)
+        pending_left_vals = []
+        for v in left_vals:
+            if store.is_done(v):
+                checkpoint_matches.extend(store.get_results(v))
+            else:
+                pending_left_vals.append(v)
+        n_checkpointed = len(left_vals) - len(pending_left_vals)
+        if n_checkpointed > 0:
+            print(
+                f"llm-join: resuming from checkpoint — {n_checkpointed} already done, "
+                f"{len(pending_left_vals)} remaining",
+                file=sys.stderr, flush=True,
+            )
+
+    raw_candidates = retriever.retrieve_with_scores(pending_left_vals, right_vals, top_k=cfg.top_k)
     candidates_per_row = [_normalize_candidates(row, cfg.retrieval) for row in raw_candidates]
 
     # --- Pass 1: embed_threshold short-circuit, collect rows needing LLM ---
     embed_matches: list[MatchResult] = []
     llm_queue: list[tuple] = []  # (left_val, candidates_with_scores)
 
-    for left_val, candidates_with_scores in zip(left_vals, candidates_per_row):
+    for left_val, candidates_with_scores in zip(pending_left_vals, candidates_per_row):
         if not candidates_with_scores:
             continue
 
@@ -179,11 +200,14 @@ def fuzzy_join(
         llm_queue = llm_queue[:cfg.max_llm_calls]
 
     # --- Pass 2: LLM scoring (sequential or concurrent) ---
-    llm_matches = _score_rows(scorer, llm_queue, cfg, llm_concurrency, verbose)
+    llm_matches = _score_rows(scorer, llm_queue, cfg, llm_concurrency, verbose, store=store)
 
-    matches = embed_matches + llm_matches
+    matches = checkpoint_matches + embed_matches + llm_matches
     result = merger.merge(df1, df2, left_col, right_col, matches, how=how, return_reasoning=return_reasoning)
     result = result.drop(columns=["__left_key__", "__right_key__"], errors="ignore")
+
+    if store is not None:
+        store.delete()
 
     # Always print one-line summary
     stats.elapsed_seconds = time.time() - t0
@@ -279,17 +303,18 @@ def _score_rows(
     cfg: ColumnConfig,
     llm_concurrency: int,
     verbose: int = 0,
+    store=None,
 ) -> list[MatchResult]:
     if not llm_queue:
         return []
     if llm_concurrency <= 1:
-        return _score_sequential(scorer, llm_queue, cfg, verbose)
+        return _score_sequential(scorer, llm_queue, cfg, verbose, store=store)
     if scorer._is_async:
-        return _score_async(scorer, llm_queue, cfg, llm_concurrency, verbose)
-    return _score_threaded(scorer, llm_queue, cfg, llm_concurrency, verbose)
+        return _score_async(scorer, llm_queue, cfg, llm_concurrency, verbose, store=store)
+    return _score_threaded(scorer, llm_queue, cfg, llm_concurrency, verbose, store=store)
 
 
-def _score_sequential(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, verbose: int = 0) -> list[MatchResult]:
+def _score_sequential(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, verbose: int = 0, store=None) -> list[MatchResult]:
     matches = []
     iterator = _maybe_tqdm(llm_queue, len(llm_queue), "LLM", verbose)
     for left_val, candidates_with_scores in iterator:
@@ -299,11 +324,14 @@ def _score_sequential(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, ver
             left_val, candidates, cfg.context_str,
             llm_threshold=cfg.llm_threshold, match_all=cfg.match_all,
         )
-        matches.extend(_process_results(results, left_val, candidates_with_scores, candidates_debug))
+        row_results = _process_results(results, left_val, candidates_with_scores, candidates_debug)
+        if store is not None and row_results:
+            store.save(left_val, row_results)
+        matches.extend(row_results)
     return matches
 
 
-def _score_threaded(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_concurrency: int, verbose: int = 0) -> list[MatchResult]:
+def _score_threaded(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_concurrency: int, verbose: int = 0, store=None) -> list[MatchResult]:
     """Parallel scoring for sync LLM functions using ThreadPoolExecutor."""
     result_map: dict[int, list[MatchResult]] = {}
 
@@ -323,7 +351,10 @@ def _score_threaded(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_c
         for future in _maybe_tqdm(as_completed(futures), len(futures), "LLM", verbose):
             idx, results, left_val, candidates_with_scores = future.result()
             candidates_debug = _make_debug(candidates_with_scores)
-            result_map[idx] = _process_results(results, left_val, candidates_with_scores, candidates_debug)
+            row_results = _process_results(results, left_val, candidates_with_scores, candidates_debug)
+            if store is not None and row_results:
+                store.save(left_val, row_results)
+            result_map[idx] = row_results
 
     matches = []
     for i in range(len(llm_queue)):
@@ -331,7 +362,7 @@ def _score_threaded(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_c
     return matches
 
 
-def _score_async(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_concurrency: int, verbose: int = 0) -> list[MatchResult]:
+def _score_async(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_concurrency: int, verbose: int = 0, store=None) -> list[MatchResult]:
     """Parallel scoring for async LLM functions using asyncio + semaphore."""
     n = len(llm_queue)
 
@@ -351,7 +382,11 @@ def _score_async(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_conc
                 )
                 if pbar is not None:
                     pbar.update(1)
-                return results, left_val, candidates_with_scores
+                candidates_debug = _make_debug(candidates_with_scores)
+                row_results = _process_results(results, left_val, candidates_with_scores, candidates_debug)
+                if store is not None and row_results:
+                    store.save(left_val, row_results)
+                return row_results
 
         tasks = [_score_one(lv, cws) for lv, cws in llm_queue]
         out = await asyncio.gather(*tasks)
@@ -371,9 +406,8 @@ def _score_async(scorer: LLMScorer, llm_queue: list, cfg: ColumnConfig, llm_conc
         raw = asyncio.run(_run_all())
 
     matches = []
-    for results, left_val, candidates_with_scores in raw:
-        candidates_debug = _make_debug(candidates_with_scores)
-        matches.extend(_process_results(results, left_val, candidates_with_scores, candidates_debug))
+    for row_results in raw:
+        matches.extend(row_results)
     return matches
 
 
