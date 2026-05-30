@@ -212,9 +212,10 @@ def test_full_resume_matches_full_run(tmp_path):
         checkpoint_path=ckpt,
     )
 
-    # Same rows (order-independent)
-    assert set(result_full["vendor"].tolist()) == set(result_resume["vendor"].tolist())
-    assert set(result_full["supplier"].tolist()) == set(result_resume["supplier"].tolist())
+    # Verify same rows and correct pairings
+    full_pairs = set(zip(result_full["vendor"].tolist(), result_full["supplier"].tolist()))
+    resume_pairs = set(zip(result_resume["vendor"].tolist(), result_resume["supplier"].tolist()))
+    assert full_pairs == resume_pairs, f"Pair mismatch: full={full_pairs} resume={resume_pairs}"
 
 
 def test_deleted_on_successful_completion(tmp_path):
@@ -293,4 +294,4 @@ def test_checkpoint_with_async_llm(tmp_path):
     )
 
     assert not os.path.exists(ckpt), "checkpoint deleted after success"
-    assert len(result) >= 1
+    assert len(result) > 0, "Expected results but got empty DataFrame"
