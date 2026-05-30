@@ -3,7 +3,7 @@ import sys
 import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, TYPE_CHECKING
 import pandas as pd
 
 from llm_join.config import ColumnConfig
@@ -13,6 +13,9 @@ from llm_join.hybrid import HybridRetriever
 from llm_join.scorer import LLMScorer
 from llm_join.merger import Merger, MatchResult
 from llm_join.stats import JoinStats
+
+if TYPE_CHECKING:
+    from llm_join.dry_run import DryRunResult
 
 
 def _maybe_tqdm(iterable, total: int, desc: str, verbose: int):

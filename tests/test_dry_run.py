@@ -91,7 +91,7 @@ def test_multiple_errors_all_collected():
     )
     assert not result.is_valid
     # Must report all 3 errors, not just the first
-    assert len(result.validation_errors) >= 3
+    assert len(result.validation_errors) == 3, f"Expected exactly 3 errors but got {len(result.validation_errors)}: {result.validation_errors}"
     error_text = " ".join(result.validation_errors)
     assert "bad_col" in error_text
     assert "context" in error_text.lower()
