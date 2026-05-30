@@ -31,7 +31,11 @@ def test_fuzzy_join_default_uses_embedding_retriever():
     df1 = pd.DataFrame({"l": ["a"]})
     df2 = pd.DataFrame({"r": ["b"]})
 
-    with patch("llm_join.join.HybridRetriever") as mock_hybrid:
+    with patch("llm_join.join.EmbeddingRetriever", wraps=None) as mock_embed:
+        # Configure the mock so fuzzy_join can actually run
+        mock_instance = MagicMock()
+        mock_instance.retrieve_with_scores.return_value = [[("b", 0.9)]]
+        mock_embed.return_value = mock_instance
         fuzzy_join(
             df1, df2,
             left_on="l", right_on="r",
@@ -41,4 +45,4 @@ def test_fuzzy_join_default_uses_embedding_retriever():
             llm_concurrency=1,
             embed_concurrency=1,
         )
-        mock_hybrid.assert_not_called()
+        mock_embed.assert_called_once()
