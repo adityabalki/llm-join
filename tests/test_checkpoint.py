@@ -137,17 +137,13 @@ def _make_async_llm(match_map: dict):
 
 
 def test_resume_skips_done_vals(tmp_path):
-    """LLM called only for vals not in checkpoint."""
+    """LLM called only for vals not in checkpoint — apple is pre-done, so LLM called 2 times not 3."""
     from llm_join.join import fuzzy_join
 
-    call_log = []
+    call_count = [0]
 
     def counting_llm(prompt: str) -> str:
-        import json as _json
-        for val in ["apple", "banana", "cherry"]:
-            if val in prompt:
-                call_log.append(val)
-                return _json.dumps([{"right_val": val + " inc", "score": 0.9, "reasoning": "ok"}])
+        call_count[0] += 1
         return "[]"
 
     df1 = pd.DataFrame({"vendor": ["apple", "banana", "cherry"]})
@@ -173,11 +169,8 @@ def test_resume_skips_done_vals(tmp_path):
         checkpoint_path=ckpt,
     )
 
-    # LLM must NOT have been called for "apple"
-    assert "apple" not in call_log
-    # LLM must have been called for banana and cherry
-    assert "banana" in call_log
-    assert "cherry" in call_log
+    # LLM must have been called exactly 2 times (banana + cherry), not 3
+    assert call_count[0] == 2, f"Expected 2 LLM calls (apple was checkpointed) but got {call_count[0]}"
 
 
 def test_full_resume_matches_full_run(tmp_path):
