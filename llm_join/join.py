@@ -43,7 +43,7 @@ def fuzzy_join(
     return_reasoning: bool = False,
     match_all: bool = False,
     verbose: int = 0,
-    retrieval: str = "hybrid",
+    retrieval: str = "embedding",
     bm25_stopwords: Optional[object] = None,
     llm_concurrency: int,
     embed_concurrency: int,

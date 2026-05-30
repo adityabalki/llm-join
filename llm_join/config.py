@@ -19,7 +19,7 @@ class ColumnConfig:
     max_llm_calls: Optional[int] = None
     max_retries: int = 3
     match_all: bool = False
-    retrieval: str = "hybrid"
+    retrieval: str = "embedding"
     bm25_stopwords: Optional[object] = None
 
     def __post_init__(self):
