@@ -15,6 +15,7 @@ except ImportError as e:
     raise
 
 from llm_join.join import fuzzy_join
+from llm_join.dry_run import DryRunResult
 
-__all__ = ["fuzzy_join"]
+__all__ = ["fuzzy_join", "DryRunResult"]
 __version__ = "0.6.0"
