@@ -4,7 +4,7 @@
 
 **The pandas join that understands what your data means.**
 
-`pd.merge` joins on exact values. `llm-join` joins on meaning using hybrid retrieval (embeddings + BM25) to find candidates and an LLM you already have to decide if they match.
+`pd.merge` joins on exact values. `llm-join` joins on meaning using embedding retrieval to find candidates and an LLM you already have to decide if they match.
 
 ```python
 from llm_join import fuzzy_join
@@ -36,6 +36,8 @@ result = fuzzy_join(
 - [Cost & Scale](#cost-scale)
 - [Performance](#performance)
 - [Best Practices for Speed](#best-practices-for-speed)
+- [Checkpoint & Resume](#checkpoint--resume)
+- [Dry Run](#dry-run)
 - [Observability](#observability)
 - [Features](#features)
 - [Parameters](#parameters)
@@ -211,9 +213,9 @@ Every value gets converted to a vector.
 
 ### Step 2 — Retrieval finds top-K candidates per row (no LLM)
 
-For each left row, the retriever returns the `top_k` best candidates from the right table. By default this is **hybrid retrieval** — FAISS embedding similarity + BM25 lexical scoring, fused via Reciprocal Rank Fusion (see [Retrieval Methods](#retrieval-methods)). Everything outside the top_k is eliminated, no LLM call needed.
+For each left row, the retriever returns the `top_k` best candidates from the right table. By default this uses **embedding retrieval** — FAISS embedding similarity (see [Retrieval Methods](#retrieval-methods)). Everything outside the top_k is eliminated, no LLM call needed.
 
-The walkthrough below shows embedding scores only, for clarity. With `retrieval="hybrid"` (default), BM25 token-overlap scores also contribute to the ranking.
+The walkthrough below shows embedding scores for clarity.
 
 **Query: `"USB-C charging cable 2m black"` → top_k=3**
 
@@ -282,15 +284,15 @@ llm-join supports three retrieval methods for the first-stage candidate filter:
 
 | Method | What it scores | Strengths |
 |---|---|---|
-| `embedding` | Semantic similarity (cosine on vectors) | Paraphrases, synonyms, multilingual |
+| `embedding` (default) | Semantic similarity (cosine on vectors) | Paraphrases, synonyms, multilingual |
 | `bm25` | Lexical / token overlap (TF-IDF based) | Rare tokens, codes, acronyms, exact identifiers |
-| `hybrid` (default) | Both, fused via Reciprocal Rank Fusion (RRF) | Catches both semantic and lexical signals |
+| `hybrid` | Both, fused via Reciprocal Rank Fusion (RRF) | Catches both semantic and lexical signals |
 
 Set via the `retrieval` parameter.
 
 ```python
-fuzzy_join(..., retrieval="hybrid")    # default
-fuzzy_join(..., retrieval="embedding") # semantic only
+fuzzy_join(..., retrieval="embedding") # default — semantic similarity
+fuzzy_join(..., retrieval="hybrid")    # opt-in — embeddings + BM25 fused via RRF
 fuzzy_join(..., retrieval="bm25")      # lexical only
 ```
 
@@ -688,6 +690,79 @@ Reference notebook with the full async pattern: [`examples/fast_async_join.py`](
 
 ---
 
+## Checkpoint & Resume
+
+For large joins that may be interrupted, pass `checkpoint_path` to save progress after every LLM call.
+
+```python
+# Enable checkpointing — saves after every LLM call
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor", right_on="supplier",
+    llm_fn=my_llm, embed_fn=my_embed,
+    context="company names",
+    llm_concurrency=10, embed_concurrency=20,
+    checkpoint_path="./vendor_join.ckpt.json",
+)
+# If the process is interrupted, rerun the same line.
+# llm-join loads the checkpoint, skips completed rows, resumes from where it stopped.
+# The checkpoint file is deleted automatically on success.
+```
+
+- Progress is saved atomically after each LLM result (sequential, threaded, and async paths all supported).
+- If the file contains a corrupt or version-mismatched checkpoint, a warning is emitted and the join starts fresh.
+- Parent directory must exist at call time (raises `ValueError` immediately if not).
+
+---
+
+## Dry Run
+
+Pass `dry_run=True` to validate parameters and estimate LLM calls and tokens without making any API calls.
+
+```python
+result = fuzzy_join(
+    df1, df2,
+    left_on="vendor", right_on="supplier",
+    llm_fn=my_llm, embed_fn=my_embed,
+    context="company names",
+    llm_concurrency=10, embed_concurrency=20,
+    dry_run=True,
+)
+# prints to stderr:
+# dry_run: no validation errors
+#   left rows: 5000 (unique: 800)
+#   right rows: 12000 (unique: 2400)
+#   LLM calls: 0-800  (0 if embed_skip_threshold fires; 800 worst case)
+#   tokens/call (est.): ~210
+#   total input tokens (est.): 0-168000
+
+print(result.is_valid)            # True
+print(result.n_llm_calls_max)     # 800
+print(result.avg_tokens_per_call) # 210
+```
+
+Catches bad parameters too — no API calls made:
+
+```python
+from llm_join import fuzzy_join, DryRunResult
+
+result = fuzzy_join(
+    df1, df2,
+    left_on="typo_col",   # column doesn't exist
+    right_on="supplier",
+    llm_fn=my_llm, embed_fn=my_embed,
+    context="",           # empty context
+    llm_concurrency=10, embed_concurrency=20,
+    dry_run=True,
+)
+print(result.validation_errors)
+# ["Column 'typo_col' not found in df1", "context must not be empty — ..."]
+```
+
+Returns a `DryRunResult` object (also exported from `llm_join`). All validation errors are collected — not fail-fast.
+
+---
+
 ## Observability
 
 Every `fuzzy_join` call prints a one-line summary to stderr at the end. You always know what happened.
@@ -717,7 +792,7 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 
 - **Any provider** — OpenAI, Azure, Anthropic, Bedrock, Vertex, Ollama, or any private model. Sync and async supported.
 - **Enterprise friendly** — User supply the LLM and embedding calls. Your data stays within your own infrastructure and chosen providers.
-- **Hybrid retrieval** — embedding (semantic) + BM25 (lexical) fused via RRF. Catches both paraphrase matches and rare token matches. Toggle with `retrieval="embedding"` / `"bm25"` / `"hybrid"` (default).
+- **Embedding retrieval** — semantic similarity via FAISS (default). Toggle with `retrieval="embedding"` (default) / `"bm25"` (lexical) / `"hybrid"` (opt-in: adds BM25 lexical scoring via RRF for rare token matches).
 - **Two-stage pipeline** — first stage eliminates 99%+ of pairs; your model scores only the shortlist
 - **Domain context** — `context` and `column_context` inject column level descriptions into every prompt
 - **Full join semantics** — `inner`, `left`, `right`, `full`  same as `pd.merge`
@@ -731,6 +806,8 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 - **Parallel scoring** — `llm_concurrency` controls how many calls run at once
 - **Retry with backoff** — failed calls retry at 1s, 2s, 4s; falls back to top embed match on total failure
 - **MIT license**
+- **Checkpoint & resume** — `checkpoint_path` saves progress after every LLM call; re-run the same line to resume from where it stopped. File deleted automatically on success.
+- **Dry run** — `dry_run=True` validates params and estimates LLM calls and tokens without calling `llm_fn` or `embed_fn`.
 
 ---
 
@@ -745,7 +822,7 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 | `context` | required | Describe what the columns represent and what kind of match to make. Injected into every LLM prompt. |
 | `llm_concurrency` | required | How many LLM calls to run in parallel. `1` = sequential. Start with `10` and adjust based on your API rate limit. |
 | `embed_concurrency` | required | How many `embed_fn` batches to run in parallel. Library auto-detects sync vs async `embed_fn`. Sync uses ThreadPoolExecutor, async uses asyncio.Semaphore. |
-| `retrieval` | `"hybrid"` | First-stage candidate filter. `"embedding"` (semantic only), `"bm25"` (lexical only), `"hybrid"` (both fused via RRF — default). See [Retrieval Methods](#retrieval-methods). |
+| `retrieval` | `"embedding"` | First-stage candidate filter. `"embedding"` (default, semantic), `"bm25"` (lexical), `"hybrid"` (both via RRF). See [Retrieval Methods](#retrieval-methods). |
 | `bm25_stopwords` | `None` | Stopword list for BM25 tokenization. `None` keeps all tokens (default, best for codes/names). Pass `"en"` for English natural-language fields, or a custom list. |
 | `column_context` | `{}` | Per-column descriptions `{"col": "description"}` adds extra detail to the prompt beyond `context`. |
 | `top_k` | `5` | How many embedding candidates to retrieve per left row before LLM scoring. |
@@ -758,6 +835,8 @@ Rate-limit errors (429s) are detected across providers (OpenAI, Anthropic, Azure
 | `match_all` | `False` | Return all candidates above threshold, not just the best. Use when one left value maps to multiple right values. |
 | `return_reasoning` | `False` | Add debug columns: `_llm_score`, `_llm_reasoning`, `_embed_rank`, `_match_method`, `_llm_candidates`. |
 | `verbose` | `0` | Logging level. `0`: silent (one-line summary at end still prints). `1`: tqdm progress bars + per-batch failure detail. `2`: also per-record log line per match. |
+| `dry_run` | `False` | If `True`, validate params and estimate LLM calls and tokens. Returns `DryRunResult`, never calls `llm_fn` or `embed_fn`. |
+| `checkpoint_path` | `None` | Path to checkpoint file. Progress saved after each LLM call. On re-run with same path, skips completed rows. File deleted on success. |
 
 ---
 
