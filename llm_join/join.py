@@ -48,6 +48,7 @@ def fuzzy_join(
     llm_concurrency: int,
     embed_concurrency: int,
     checkpoint_path: Optional[str] = None,
+    dry_run: bool = False,
 ) -> pd.DataFrame:
     """Fuzzy join two DataFrames using embeddings + LLM scoring.
 
@@ -56,6 +57,22 @@ def fuzzy_join(
       1 = progress bars (tqdm) + per-batch failure detail
       2 = adds per-record log line: '"left" -> "right" [score=..., embed_rank=..., method]'
     """
+    if dry_run:
+        from llm_join.dry_run import estimate
+        result = estimate(
+            df1=df1, df2=df2, left_on=left_on, right_on=right_on,
+            llm_fn=llm_fn, embed_fn=embed_fn, context=context,
+            column_context=column_context or {}, top_k=top_k,
+            llm_threshold=llm_threshold, batch_size=batch_size,
+            embed_concurrency=embed_concurrency,
+            embed_skip_threshold=embed_skip_threshold,
+            max_llm_calls=max_llm_calls, max_retries=max_retries,
+            match_all=match_all, retrieval=retrieval,
+            bm25_stopwords=bm25_stopwords, checkpoint_path=checkpoint_path,
+        )
+        print(result.summary(), file=sys.stderr, flush=True)
+        return result
+
     t0 = time.time()
     stats = JoinStats()
 
