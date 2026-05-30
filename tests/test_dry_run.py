@@ -142,3 +142,12 @@ def test_embed_skip_threshold_affects_min():
         dry_run=True,
     )
     assert result_no_skip.n_llm_calls_min == result_no_skip.n_llm_calls_max
+
+
+def test_catches_bad_checkpoint_path():
+    """dry_run validates checkpoint_path parent dir exists."""
+    result = _run_dry(checkpoint_path="/nonexistent_dir_llm_join_dry_run_test/join.ckpt.json")
+    assert not result.is_valid
+    assert any("checkpoint" in e.lower() for e in result.validation_errors), (
+        f"Expected checkpoint error in validation_errors but got: {result.validation_errors}"
+    )
