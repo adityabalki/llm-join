@@ -157,6 +157,117 @@ class LLMScorer:
     # Parsing
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # JSON repair helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _strip_fences(text: str) -> str:
+        return (
+            text.strip()
+            .removeprefix("```json")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
+
+    @staticmethod
+    def _fix_trailing_commas(text: str) -> str:
+        return re.sub(r',(\s*[}\]])', r'\1', text)
+
+    @staticmethod
+    def _extract_array(text: str) -> Optional[str]:
+        """Extract outermost JSON array using greedy match (handles ] inside string values)."""
+        start = text.find('[')
+        if start == -1:
+            return None
+        # walk forward tracking bracket depth
+        depth = 0
+        in_str = False
+        escape_next = False
+        for i, ch in enumerate(text[start:], start):
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_str:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch == '[':
+                depth += 1
+            elif ch == ']':
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+        # truncated: return from start to end (will try salvage)
+        return text[start:]
+
+    @staticmethod
+    def _extract_from_wrapper(text: str) -> Optional[str]:
+        """If LLM returned {\"matches\": [...]} style wrapper, extract the array."""
+        try:
+            obj = json.loads(text)
+            if isinstance(obj, dict):
+                for key in ('matches', 'results', 'items', 'data', 'output'):
+                    if key in obj and isinstance(obj[key], list):
+                        return json.dumps(obj[key])
+        except (json.JSONDecodeError, ValueError):
+            pass
+        return None
+
+    @staticmethod
+    def _salvage_truncated(text: str) -> Optional[list]:
+        """Extract all complete JSON objects from a truncated array."""
+        objects = []
+        for m in re.finditer(r'\{[^{}]*\}', text, re.DOTALL):
+            try:
+                obj = json.loads(m.group())
+                if isinstance(obj, dict):
+                    objects.append(obj)
+            except json.JSONDecodeError:
+                continue
+        return objects if objects else None
+
+    def _repair_and_parse(self, raw: str) -> Optional[list]:
+        """Try progressively more aggressive repairs to get a list from raw LLM output."""
+        candidates_to_try: list[str] = []
+
+        # 1. strip fences
+        fenced = self._strip_fences(raw)
+        candidates_to_try.append(fenced)
+
+        # 2. fix trailing commas on fenced
+        candidates_to_try.append(self._fix_trailing_commas(fenced))
+
+        # 3. extract array (proper bracket-depth walk — handles ] inside strings)
+        arr_str = self._extract_array(fenced) or self._extract_array(raw)
+        if arr_str:
+            candidates_to_try.append(arr_str)
+            candidates_to_try.append(self._fix_trailing_commas(arr_str))
+
+        # 4. extract from object wrapper
+        wrapper = self._extract_from_wrapper(fenced) or self._extract_from_wrapper(raw)
+        if wrapper:
+            candidates_to_try.append(wrapper)
+
+        for text in candidates_to_try:
+            try:
+                result = json.loads(text)
+                if isinstance(result, list):
+                    return result
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        # 5. last resort: salvage complete objects from truncated stream
+        # Only attempt if raw looks like a truncated array (contains '[' but no valid closing ']')
+        if '[' in raw:
+            return self._salvage_truncated(raw)
+        return None
+
     def _parse(
         self,
         left_val: str,
@@ -165,28 +276,10 @@ class LLMScorer:
         llm_threshold: float,
         match_all: bool = False,
     ) -> list[MatchResult]:
-        try:
-            # strip markdown code fences if present
-            cleaned = (
-                raw.strip()
-                .removeprefix("```json")
-                .removeprefix("```")
-                .removesuffix("```")
-                .strip()
-            )
-            parsed = json.loads(cleaned)
-        except (json.JSONDecodeError, ValueError):
-            # retry: find JSON array anywhere in response
-            match = re.search(r'\[.*?\]', raw, re.DOTALL)
-            if match:
-                try:
-                    parsed = json.loads(match.group())
-                except json.JSONDecodeError:
-                    warnings.warn(f"LLM returned malformed JSON for '{left_val}': {raw!r}")
-                    return []
-            else:
-                warnings.warn(f"LLM returned malformed JSON for '{left_val}': {raw!r}")
-                return []
+        parsed = self._repair_and_parse(raw)
+        if parsed is None:
+            warnings.warn(f"LLM returned malformed JSON for '{left_val}': {raw!r}")
+            return []
 
         if not isinstance(parsed, list):
             warnings.warn(f"LLM returned non-array JSON for '{left_val}': {raw!r}")
