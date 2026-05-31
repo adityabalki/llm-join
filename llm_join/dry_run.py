@@ -46,8 +46,9 @@ class DryRunResult:
             f"  total input tokens (est.): {self.total_tokens_min}-{self.total_tokens_max}"
         )
         lines.append(
-            "  note: token estimates assume ~4 chars/token (English). "
-            "Non-English text (CJK, etc.) or code-heavy values will differ."
+            "  note: token estimates assume ~4 chars/token (English text). "
+            "Non-English text (Chinese, Japanese, Korean, Arabic, etc.) or "
+            "code-heavy values will use more tokens than shown here."
         )
         return "\n".join(lines)
 
@@ -171,7 +172,7 @@ def estimate(
 
     # Token estimation
     # Basis: ~4 chars per token (OpenAI/Anthropic rule-of-thumb for English text).
-    # Non-English corpora (CJK ~1.5 chars/token, code ~3 chars/token) will read higher here.
+    # Non-English corpora (Chinese/Japanese/Korean ~1.5 chars/token, code ~3 chars/token) will use more tokens than estimated.
     # overhead=50 covers prompt template boilerplate (role line, format instruction, pair labels).
     # Formula: context_tokens + avg_left_tokens + (top_k * avg_right_tokens) + overhead
     context_tokens = len(context) // 4
