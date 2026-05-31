@@ -45,6 +45,10 @@ class DryRunResult:
         lines.append(
             f"  total input tokens (est.): {self.total_tokens_min}-{self.total_tokens_max}"
         )
+        lines.append(
+            "  note: token estimates assume ~4 chars/token (English). "
+            "Non-English text (CJK, etc.) or code-heavy values will differ."
+        )
         return "\n".join(lines)
 
 
@@ -166,6 +170,10 @@ def estimate(
         n_llm_calls_min = n_llm_calls_max
 
     # Token estimation
+    # Basis: ~4 chars per token (OpenAI/Anthropic rule-of-thumb for English text).
+    # Non-English corpora (CJK ~1.5 chars/token, code ~3 chars/token) will read higher here.
+    # overhead=50 covers prompt template boilerplate (role line, format instruction, pair labels).
+    # Formula: context_tokens + avg_left_tokens + (top_k * avg_right_tokens) + overhead
     context_tokens = len(context) // 4
     if n_left_unique > 0:
         left_tokens = int(left_series.str.len().mean()) // 4
@@ -175,7 +183,7 @@ def estimate(
         right_tokens = int(right_series.str.len().mean()) // 4
     else:
         right_tokens = 0
-    overhead = 50
+    overhead = 50  # prompt boilerplate: ~50 tokens for role + format instruction + pair labels
     safe_top_k = max(top_k, 1)
     avg_tokens_per_call = context_tokens + left_tokens + (safe_top_k * right_tokens) + overhead
 
